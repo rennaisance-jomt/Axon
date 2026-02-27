@@ -1,0 +1,58 @@
+# Binaries
+axon.exe
+axon
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output
+/out/
+/bin/
+/dist/
+
+# Go workspace
+go.work
+
+# Dependencies
+/vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data
+/data/
+*.db
+*.db-journal
+
+# Screenshots
+/screenshots/
+*screenshot*.png
+*screenshot*.pdf
+
+# Profiles
+/profiles/
+*_session.json
+
+# Logs
+*.log
+/logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Config overrides (keep config.yaml)
+config.local.yaml

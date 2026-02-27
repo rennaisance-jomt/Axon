@@ -1,0 +1,45 @@
+# Axon Configuration
+
+server:
+  host: "0.0.0.0"
+  port: 8020
+  read_timeout: "30s"
+  write_timeout: "30s"
+
+browser:
+  headless: true
+  binary_path: ""
+  pool_size: 5
+  launch_options:
+    args:
+      - "--no-sandbox"
+      - "--disable-setuid-sandbox"
+      - "--disable-dev-shm-usage"
+
+security:
+  ssrf:
+    enabled: true
+    allow_private_network: false
+    domain_allowlist: []
+    domain_denylist: []
+    scheme_allowlist:
+      - "https"
+      - "http"
+  prompt_injection:
+    enabled: true
+    mode: "warn"
+    sensitivity: "medium"
+  reversibility:
+    require_confirm: true
+    action_budget_per_hour: 10
+    escalate_on_budget_exceeded: true
+
+storage:
+  path: "./data/axon.db"
+  session_ttl: "24h"
+  audit_retention: "90d"
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
