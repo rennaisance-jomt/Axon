@@ -8,13 +8,14 @@ server:
 
 browser:
   headless: true
-  binary_path: ""
+  binary_path: "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
   pool_size: 2
   launch_options:
     args:
       - "--no-sandbox"
       - "--disable-setuid-sandbox"
       - "--disable-dev-shm-usage"
+      - "--edge-webkit-force-wide-viewport"
 
 security:
   ssrf:

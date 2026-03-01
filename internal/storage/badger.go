@@ -145,3 +145,47 @@ func (d *DB) SetElementMemory(domain string, data []byte) error {
 		return txn.Set([]byte("memory:"+domain), data)
 	})
 }
+
+// StoreElementMemory stores a single intent -> ref mapping
+func (d *DB) StoreElementMemory(key, value string) error {
+	return d.db.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte(key), []byte(value))
+	})
+}
+
+// GetElementMemoryByKey retrieves a specific intent mapping
+func (d *DB) GetElementMemoryByKey(key string) (string, error) {
+	var value []byte
+	err := d.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte(key))
+		if err != nil {
+			return err
+		}
+		value, err = item.ValueCopy(nil)
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	return string(value), nil
+}
+
+// ListElementMemories lists all memories for a domain
+func (d *DB) ListElementMemories(domain string) (map[string]string, error) {
+	memories := make(map[string]string)
+	prefix := []byte("intent:" + domain + ":")
+	
+	err := d.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer it.Close()
+		
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			key := string(it.Item().Key())
+			value, _ := it.Item().ValueCopy(nil)
+			memories[key] = string(value)
+		}
+		return nil
+	})
+	
+	return memories, err
+}

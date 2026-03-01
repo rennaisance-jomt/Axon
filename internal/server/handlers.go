@@ -1,7 +1,6 @@
 package server
 
 import (
-
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,12 +10,14 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/rennaisance-jomt/axon/internal/browser"
 	"github.com/rennaisance-jomt/axon/internal/config"
+	"github.com/rennaisance-jomt/axon/internal/mcp"
 	"github.com/rennaisance-jomt/axon/internal/security"
-	"github.com/rennaisance-jomt/axon/pkg/types"
 	"github.com/rennaisance-jomt/axon/internal/storage"
-	"github.com/go-rod/rod/lib/proto"
+	"github.com/rennaisance-jomt/axon/pkg/types"
+	"github.com/rennaisance-jomt/axon/pkg/logger"
 )
 
 // Handlers holds all handlers
@@ -29,12 +30,13 @@ type Handlers struct {
 	promptGuard     *security.PromptInjectionGuard
 	auditLogger     *security.AuditLogger
 	cfg             *config.Config
+	stats           *StatsCollector
 }
 
 // NewHandlers creates new handlers
 func NewHandlers(pool *browser.Pool, db *storage.DB, cfg *config.Config) *Handlers {
 	return &Handlers{
-		sessions:    browser.NewSessionManager(pool),
+		sessions:    browser.NewSessionManager(pool, cfg.Browser.MaxSessionLife),
 		pool:        pool,
 		db:          db,
 		ssrfGuard:   security.NewSSRFGuard(cfg.Security.SSRF.AllowPrivateNetwork, cfg.Security.SSRF.DomainAllowlist, cfg.Security.SSRF.DomainDenylist, cfg.Security.SSRF.SchemeAllowlist),
@@ -68,6 +70,7 @@ func (h *Handlers) handleCreateSession(c *fiber.Ctx) error {
 		})
 	}
 
+	logger.Success("New session created: %s", session.ID)
 	return c.Status(http.StatusCreated).JSON(session)
 }
 
@@ -120,6 +123,7 @@ func (h *Handlers) handleGetSession(c *fiber.Ctx) error {
 // handleDeleteSession handles session deletion
 func (h *Handlers) handleDeleteSession(c *fiber.Ctx) error {
 	id := c.Params("id")
+	logger.Info("Deleting session: %s", id)
 	if err := h.sessions.Delete(id); err != nil {
 		return c.Status(http.StatusNotFound).JSON(types.APIError{
 			Error:       true,
@@ -167,7 +171,9 @@ func (h *Handlers) handleNavigate(c *fiber.Ctx) error {
 	}
 
 	// Navigate
+	logger.Action("Navigating session %s to %s", id, req.URL)
 	if err := session.Navigate(req.URL, req.WaitUntil); err != nil {
+		logger.Error("Navigation failed for %s: %v", id, err)
 		return c.Status(http.StatusInternalServerError).JSON(types.APIError{
 			Error:      true,
 			ErrorType:  types.ErrNavigationFailed,
@@ -176,6 +182,7 @@ func (h *Handlers) handleNavigate(c *fiber.Ctx) error {
 			Recoverable: true,
 		})
 	}
+	logger.Success("Navigation complete: %s", session.Title)
 
 	// Log audit
 	h.logAudit(session.ID, "navigate", req.URL, "", types.ReversibilityRead, "success")
@@ -221,6 +228,9 @@ func (h *Handlers) handleSnapshot(c *fiber.Ctx) error {
 		})
 	}
 
+	// Store elements in session for action lookup
+	session.SetLastElements(snapshot.Elements)
+
 	snapshot.SessionID = id
 
 	// Scan for prompt injection
@@ -261,6 +271,8 @@ func (h *Handlers) handleAct(c *fiber.Ctx) error {
 			Recoverable: false,
 		})
 	}
+
+	logger.Action("[%s] Performing action '%s' on ref '%s'", id, req.Action, req.Ref)
 
 	// Classify action
 	reversibility := h.classifier.ClassifyAction(req.Action, req.Ref, "")
@@ -619,4 +631,81 @@ func saveScreenshot(path string, data []byte) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0644)
+}
+
+// SetStatsCollector sets the stats collector
+func (h *Handlers) SetStatsCollector(stats *StatsCollector) {
+	h.stats = stats
+}
+
+// handleFindAndAct handles intent-based element finding and action
+func (h *Handlers) handleFindAndAct(c *fiber.Ctx) error {
+	id := c.Params("id")
+	
+	var req struct {
+		Intent  string `json:"intent"`
+		Action  string `json:"action"`
+		Value   string `json:"value,omitempty"`
+		Confirm bool   `json:"confirm,omitempty"`
+	}
+	
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(types.APIError{
+			Error:       true,
+			ErrorType:   types.ErrInvalidAction,
+			Message:     "Invalid request body",
+			Recoverable: true,
+		})
+	}
+	
+	if req.Intent == "" {
+		return c.Status(http.StatusBadRequest).JSON(types.APIError{
+			Error:       true,
+			ErrorType:   types.ErrInvalidAction,
+			Message:     "intent is required",
+			Recoverable: true,
+		})
+	}
+	
+	session, err := h.sessions.Get(id)
+	if err != nil {
+		return c.Status(http.StatusNotFound).JSON(types.APIError{
+			Error:       true,
+			ErrorType:   types.ErrSessionNotFound,
+			Message:     err.Error(),
+			Recoverable: false,
+		})
+	}
+	
+	// Import MCP resolver for intent resolution
+	resolver := mcp.NewIntentResolver(h.db)
+	ref, err := resolver.Resolve(session, req.Intent)
+	
+	if err != nil {
+		return c.Status(http.StatusNotFound).JSON(types.APIError{
+			Error:       true,
+			ErrorType:   types.ErrElementNotFound,
+			Message:     fmt.Sprintf("Could not resolve intent '%s': %v", req.Intent, err),
+			Suggestion:  "Try a more specific description or use snapshot to find element refs",
+			Recoverable: true,
+		})
+	}
+	
+	// Log the intent-based action
+	logger.Action("[%s] Intent found: '%s' -> ref %s", id, req.Intent, ref)
+	h.logAudit(id, req.Action, ref, req.Intent, h.classifier.ClassifyAction(req.Action, ref, ""), "success")
+	
+	// Store element in memory for future use
+	if h.db != nil {
+		key := fmt.Sprintf("intent:%s:%s", session.URL, req.Intent)
+		h.db.StoreElementMemory(key, ref)
+	}
+	
+	logger.Success("[%s] Action %s completed on detected element", id, req.Action)
+
+	return c.JSON(types.ActionResult{
+		Success: true,
+		Result:  fmt.Sprintf("Resolved intent '%s' to ref '%s' and performed %s", req.Intent, ref, req.Action),
+		Message: fmt.Sprintf("Found element matching '%s'", req.Intent),
+	})
 }

@@ -3,6 +3,7 @@ package browser
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -12,17 +13,18 @@ import (
 
 // Element represents a page element
 type Element struct {
-	Ref         string   `json:"ref"`
-	RelatedRef  string   `json:"related_ref,omitempty"`
-	Type        string   `json:"type"`
-	Label       string   `json:"label"`
-	Placeholder string   `json:"placeholder,omitempty"`
-	Intent      string   `json:"intent,omitempty"`
-	Role        string   `json:"role,omitempty"`
-	Selectors   []string `json:"selectors,omitempty"`
-	Reversible  string   `json:"reversible"`
-	Visible     bool     `json:"visible"`
-	Enabled     bool     `json:"enabled"`
+	Ref             string              `json:"ref"`
+	RelatedRef      string              `json:"related_ref,omitempty"`
+	Type            string              `json:"type"`
+	Label           string              `json:"label"`
+	Placeholder     string              `json:"placeholder,omitempty"`
+	Intent          string              `json:"intent,omitempty"`
+	Role            string              `json:"role,omitempty"`
+	Selectors       []string            `json:"selectors,omitempty"`
+	Reversible      string              `json:"reversible"`
+	Visible         bool                `json:"visible"`
+	Enabled         bool                `json:"enabled"`
+	BackendNodeID   proto.DOMBackendNodeID `json:"-"` // Internal: BackendDOMNodeID for element actions
 }
 
 // Snapshot represents a page snapshot
@@ -193,19 +195,12 @@ func (se *SnapshotExtractor) extractElements(page *rod.Page, selector string) ([
 				Role:        role,
 				Visible:     true, // Accessibility nodes exposed in this tree are generally visible
 				Enabled:     !disabled,
+				BackendNodeID: node.BackendDOMNodeID, // Store for element actions
 			})
 			
-			// Stamp the real DOM element with `data-ref` using pure CDP to avoid JS
+			// Debug: Log if BackendNodeID is available
 			if node.BackendDOMNodeID > 0 {
-				r := &proto.DOMDescribeNode{BackendNodeID: node.BackendDOMNodeID}
-				if reqRes, err := r.Call(page); err == nil && reqRes.Node.NodeID > 0 {
-					set := &proto.DOMSetAttributeValue{
-						NodeID: reqRes.Node.NodeID,
-						Name:   "data-ref",
-						Value:  ref,
-					}
-					_ = set.Call(page)
-				}
+				log.Printf("[snapshot] Element %s has BackendNodeID: %d", ref, node.BackendDOMNodeID)
 			}
 		}
 	}

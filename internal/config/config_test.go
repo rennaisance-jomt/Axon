@@ -24,8 +24,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Browser.Headless != true {
 		t.Errorf("Expected headless true, got %v", cfg.Browser.Headless)
 	}
-	if cfg.Browser.PoolSize != 5 {
-		t.Errorf("Expected pool size 5, got %d", cfg.Browser.PoolSize)
+	if cfg.Browser.PoolSize != 1 {
+		t.Errorf("Expected pool size 1, got %d", cfg.Browser.PoolSize)
 	}
 
 	// Security defaults

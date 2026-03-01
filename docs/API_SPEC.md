@@ -53,7 +53,7 @@ info:
   description: AI-Native Browser Control Server
   version: 1.0.0
   contact:
-    name: SuperClaw Research
+    name: Axon Project Team
 
 servers:
   - url: http://localhost:8020
@@ -616,4 +616,9 @@ Event types:
 
 ---
 
-*Axon API Specification v1.0 | February 2026*
+<div align="center">
+
+*Axon Project | 2026*  
+*An AI-native browser built with ❤️ for AI agents.*
+
+</div>

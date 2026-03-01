@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/rennaisance-jomt/axon/internal/browser"
 	"github.com/rennaisance-jomt/axon/internal/config"
@@ -30,7 +31,7 @@ func TestNavigateSnapshotActWorkflow(t *testing.T) {
 	defer pool.Close()
 
 	// Create session manager
-	sm := browser.NewSessionManager(pool)
+	sm := browser.NewSessionManager(pool, 30*time.Minute)
 
 	// 1. Create session
 	session, err := sm.Create("test-workflow", "")
@@ -39,7 +40,7 @@ func TestNavigateSnapshotActWorkflow(t *testing.T) {
 	}
 
 	// 2. Navigate to google.com (safe/stable target)
-	err = session.Navigate("https://www.google.com")
+	err = session.Navigate("https://www.google.com", "load")
 	if err != nil {
 		t.Fatalf("Failed to navigate: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestSessionPersistence(t *testing.T) {
 	}
 	defer pool.Close()
 
-	sm := browser.NewSessionManager(pool)
+	sm := browser.NewSessionManager(pool, 30*time.Minute)
 
 	// 1. Create session
 	session, err := sm.Create("persist-test", "")
@@ -86,7 +87,7 @@ func TestSessionPersistence(t *testing.T) {
 	}
 
 	// 2. Navigate
-	err = session.Navigate("https://example.com")
+	err = session.Navigate("https://example.com", "load")
 	if err != nil {
 		t.Fatalf("Failed to navigate: %v", err)
 	}
@@ -132,7 +133,7 @@ func TestProfileLoading(t *testing.T) {
 	}
 	defer pool.Close()
 
-	sm := browser.NewSessionManager(pool)
+	sm := browser.NewSessionManager(pool, 30*time.Minute)
 
 	// 1. Create session
 	session, err := sm.Create("profile-test", "")
@@ -141,7 +142,7 @@ func TestProfileLoading(t *testing.T) {
 	}
 
 	// Navigate to a site to set a cookie
-	err = session.Navigate("https://example.com")
+	err = session.Navigate("https://example.com", "load")
 	if err != nil {
 		t.Fatalf("Failed to navigate: %v", err)
 	}

@@ -185,4 +185,9 @@ Each entry is hashed with the previous entry's hash (chain structure):
 
 ---
 
-*Axon Security Model v0.1 | February 2026*
+<div align="center">
+
+*Axon Project | 2026*  
+*An AI-native browser built with ❤️ for AI agents.*
+
+</div>

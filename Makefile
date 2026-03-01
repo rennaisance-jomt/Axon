@@ -45,9 +45,14 @@ deps:
 	$(GO) mod download
 	$(GO) mod tidy
 
-# Run tests
+# Run human-readable tests
 .PHONY: test
 test:
+	$(GO) run ./scripts/test_runner.go
+
+# Run verbose tests
+.PHONY: test-full
+test-full:
 	$(GO) test -v -race ./...
 
 # Run tests with coverage

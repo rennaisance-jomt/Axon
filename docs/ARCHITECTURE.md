@@ -273,7 +273,7 @@ axon_act(ref="a1", action="click", confirm=True, session="x_main")
 ```
 ┌─────────────────────────────────────────┐
 │           Agent Orchestrator            │
-│         (SuperClaw / LangChain)         │
+│       (Custom Agent / LangChain)        │
 └────────────────┬────────────────────────┘
                  │ HTTP/JSON
                  ▼
@@ -298,4 +298,9 @@ Axon runs as a local service alongside the agent. No cloud dependency. No data l
 
 ---
 
-*Axon Architecture v0.1 | February 2026*
+<div align="center">
+
+*Axon Project | 2026*  
+*An AI-native browser built with ❤️ for AI agents.*
+
+</div>

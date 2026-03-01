@@ -9,11 +9,12 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/rennaisance-jomt/axon/internal/browser"
 	"github.com/rennaisance-jomt/axon/internal/config"
+	"github.com/rennaisance-jomt/axon/internal/middleware"
 	"github.com/rennaisance-jomt/axon/internal/storage"
+	"github.com/rennaisance-jomt/axon/pkg/logger"
 )
 
 // Server represents the Axon HTTP server
@@ -23,6 +24,8 @@ type Server struct {
 	handlers *Handlers
 	pool     *browser.Pool
 	db       *storage.DB
+	stats    *StatsCollector
+	dashboard *DashboardHandler
 	mu       sync.RWMutex
 	start    time.Time
 }
@@ -37,28 +40,41 @@ func New(cfg *config.Config) *Server {
 
 // Start starts the HTTP server
 func (s *Server) Start() error {
+	logger.Banner()
 	// Initialize browser pool
+	logger.System("Initializing browser pool (PoolSize: %d)", s.cfg.Browser.PoolSize)
 	pool, err := browser.NewPool(&s.cfg.Browser)
 	if err != nil {
+		logger.Error("Failed to initialize browser pool: %v", err)
 		return fmt.Errorf("failed to initialize browser pool: %w", err)
 	}
 	s.pool = pool
+	logger.Success("Browser pool ready")
 
 	// Initialize storage
+	logger.System("Connecting to storage: %s", s.cfg.Storage.Path)
 	db, err := storage.New(s.cfg.Storage.Path)
 	if err != nil {
+		logger.Error("Failed to initialize storage: %v", err)
 		return fmt.Errorf("failed to initialize storage: %w", err)
 	}
 	s.db = db
+	logger.Success("Storage connection established")
 
 	// Initialize handlers
 	s.handlers = NewHandlers(pool, db, s.cfg)
 
+	// Initialize stats collector and dashboard
+	s.stats = NewStatsCollector()
+	s.dashboard = NewDashboardHandler(s.stats)
+	s.handlers.SetStatsCollector(s.stats)
+
 	// Create Fiber app
 	s.app = fiber.New(fiber.Config{
-		ReadTimeout:  s.cfg.Server.ReadTimeout,
-		WriteTimeout: s.cfg.Server.WriteTimeout,
-		AppName:      "Axon",
+		ReadTimeout:           s.cfg.Server.ReadTimeout,
+		WriteTimeout:          s.cfg.Server.WriteTimeout,
+		AppName:               "Axon",
+		DisableStartupMessage: true,
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
 				"error":   true,
@@ -69,14 +85,17 @@ func (s *Server) Start() error {
 
 	// Middleware
 	s.app.Use(recover.New())
-	s.app.Use(logger.New())
+	// s.app.Use(logger.New()) // Replacing noisy fiber logger with custom targeted logs
 	s.app.Use(cors.New())
+	s.app.Use(middleware.RetryMiddleware(middleware.DefaultRetryConfig()))
 
 	// routes
 	s.setupRoutes()
 
 	// Start listener
 	addr := fmt.Sprintf("%s:%d", s.cfg.Server.Host, s.cfg.Server.Port)
+	logger.Success("Axon server listening on %s", addr)
+	logger.Info("Press Ctrl+C to stop the server")
 	return s.app.Listen(addr)
 }
 
@@ -104,6 +123,9 @@ func (s *Server) setupRoutes() {
 	// Health check
 	s.app.Get("/health", s.handleHealth)
 
+	// Dashboard routes
+	s.dashboard.RegisterRoutes(s.app)
+
 	// API v1
 	api := s.app.Group("/api/v1")
 
@@ -124,6 +146,9 @@ func (s *Server) setupRoutes() {
 	sessions.Post("/:id/wait", s.handlers.handleWait)
 	sessions.Get("/:id/cookies", s.handlers.handleGetCookies)
 	sessions.Post("/:id/cookies", s.handlers.handleSetCookies)
+	
+	// Phase 2: Intent-based resolution
+	sessions.Post("/:id/find_and_act", s.handlers.handleFindAndAct)
 
 	// Audit
 	api.Get("/audit", s.handlers.handleAudit)

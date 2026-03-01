@@ -15,8 +15,9 @@ func main() {
 	testURL := "https://www.cnn.com"
 
 	cfg := &config.BrowserConfig{
-		PoolSize:      1,
-		LaunchOptions: map[string]interface{}{"--no-sandbox": true},
+		PoolSize:       1,
+		MaxSessionLife: 30 * time.Minute,
+		LaunchOptions:  map[string]interface{}{"--no-sandbox": true},
 	}
 	pool, err := browser.NewPool(cfg)
 	if err != nil {
@@ -24,8 +25,8 @@ func main() {
 	}
 	defer pool.Close()
 
-	sm := browser.NewSessionManager(pool)
-	
+	sm := browser.NewSessionManager(pool, cfg.MaxSessionLife)
+
 	fmt.Println("🛑 Running Headless-Native Blocklist Test (Wait...")
 
 	// Launch Axon Native Session (which has blocking ENABLED)
@@ -43,10 +44,13 @@ func main() {
 	axonDur := time.Since(axonStart)
 
 	// Launch RAW Session (blocking DISABLED)
-	rootBrowser, _ := pool.Acquire()
+	worker, _ := pool.Acquire()
+	worker.mu.RLock()
+	rootBrowser := worker.Browser
+	worker.mu.RUnlock()
 	rawContext, _ := rootBrowser.Incognito()
 	rawPage, _ := rawContext.Page(proto.TargetCreateTarget{})
-	
+
 	rawStart := time.Now()
 	err = rawPage.Navigate(testURL)
 	if err != nil {
@@ -56,11 +60,12 @@ func main() {
 	rawDur := time.Since(rawStart)
 
 	rawContext.Close()
+	pool.Release(worker)
 
 	fmt.Printf("⏱️  Raw Chrome Load Time (Unblocked): %v\n", rawDur)
 	fmt.Printf("⏱️  Axon Embedded Load Time (Blocked): %v\n", axonDur)
 
-	diff := float64(rawDur - axonDur) / float64(rawDur) * 100.0
+	diff := float64(rawDur-axonDur) / float64(rawDur) * 100.0
 	fmt.Printf("📉 Latency Reduction: %.2f%%\n", diff)
 
 	if diff > 50 {

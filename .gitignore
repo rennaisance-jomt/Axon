@@ -1,58 +1,112 @@
-# Binaries
-axon.exe
-axon
+# Axon Project - .gitignore
+
+# Binaries & Executables
+/axon
+/axon-cli
+/bin/
+/axon.exe
+/axon-cli.exe
+/main.exe
 *.exe
 *.dll
 *.so
 *.dylib
 
-# Test binary
+# Testing
 *.test
+/coverage.out
+/coverage.html
+/test-results/
 
-# Output
+# Build & Dist
 /out/
-/bin/
 /dist/
+/build/
 
-# Go workspace
+# Go Workspace & Dependencies
 go.work
-
-# Dependencies
+go.work.sum
 /vendor/
 
-# IDE
+# IDEs & Text Editors
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+.history/
+.project
+.settings/
+.vscode/launch.json
+.vscode/tasks.json
+.vscode/settings.json
 
-# OS
+# OS Specific
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
-# Data
+# Data & Database
 /data/
 *.db
 *.db-journal
+*.wal
+*.shm
 
-# Screenshots
+# Screenshots & Visual Artifacts
 /screenshots/
 *screenshot*.png
 *screenshot*.pdf
+*screenshot*.jpg
+*screenshot*.jpeg
 
-# Profiles
+# Profiles & Sessions
 /profiles/
 *_session.json
 
-# Logs
+# Logging
 *.log
 /logs/
 
-# Environment
+# Environment & Secret
 .env
 .env.local
 .env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Config overrides (keep config.yaml)
+# Configuration Overrides
+/config/config.local.yaml
 config.local.yaml
+
+# Internal Project Management & Documentation
+/Dev Journals/
+/docs/ROADMAP.md
+/docs/TASKS.md
+/docs/PHASE2_TEST_REPORT.md
+/docs/RESEARCH.md
+/docs/PROPOSAL.md
+/docs/COMPETITIVE_ANALYSIS.md
+/docs/TECH_STACK.md
+/docs/PROGRESS.md
+/docs/FEATURES.md
+/docs/DATA_SCHEMAS.md
+/docs/AGENT_INTERFACE.md
+/docs/DEPLOYMENT.md
+/docs/CONTRIBUTING.md
+/phase_verification_report.json
+
+# Internal Scripts & Ephemeral Test Data
+/scripts/
+/result.txt
+/verify_sprint6_logs.txt
+
+# Examples
+/examples/
+
+

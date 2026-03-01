@@ -26,10 +26,13 @@ type ServerConfig struct {
 
 // BrowserConfig holds browser configuration
 type BrowserConfig struct {
-	Headless       bool
-	BinaryPath     string
-	PoolSize       int
-	LaunchOptions map[string]interface{}
+	Headless         bool
+	BinaryPath       string
+	PoolSize         int
+	MaxSessionLife   time.Duration // Max session lifetime (default: 30 minutes)
+	MaxMemoryMB      int           // Max memory per process in MB (default: 512)
+	HealthCheckInterval time.Duration // Health check interval (default: 30 seconds)
+	LaunchOptions    map[string]interface{}
 }
 
 // SecurityConfig holds security configuration
@@ -86,9 +89,12 @@ func DefaultConfig() *Config {
 			WriteTimeout: 30 * time.Second,
 		},
 		Browser: BrowserConfig{
-			Headless:   true,
-			PoolSize:   5,
-			LaunchOptions: map[string]interface{}{},
+			Headless:           true,
+			PoolSize:           1,
+			MaxSessionLife:     30 * time.Minute,
+			MaxMemoryMB:        512,
+			HealthCheckInterval: 30 * time.Second,
+			LaunchOptions:      map[string]interface{}{},
 		},
 		Security: SecurityConfig{
 			SSRF: SSRFConfig{

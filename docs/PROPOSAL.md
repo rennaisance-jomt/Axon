@@ -3,7 +3,7 @@
 
 **Version:** 0.1  
 **Date:** February 2026  
-**Prepared by:** SuperClaw Research
+**Prepared by:** Axon Project Team
 
 ---
 
@@ -13,7 +13,7 @@ Every AI agent that interacts with the web today does so through tools designed 
 
 **Axon** is a proposal to build a browser from the ground up — not for humans first but for AI reasoning engines. It is not a wrapper around Playwright or a CLI around Chrome. It is a new abstraction layer that sits between AI agents and the web, translating the web's visual, selector-based world into the semantic, structured world that AI reasoning systems actually need.
 
-This document proposes Axon as a standalone open-source project emerging from SuperClaw's browser integration work.
+This document proposes Axon as a standalone open-source project focused on AI-native browser integration.
 
 ---
 
@@ -180,4 +180,4 @@ Axon is that browser.
 
 ---
 
-*Axon Project Proposal v0.1 | February 2026 | SuperClaw Research*
+*Axon Project Proposal v0.1 | February 2026 | Axon Project*

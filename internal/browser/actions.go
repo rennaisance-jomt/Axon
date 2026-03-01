@@ -83,70 +83,75 @@ func (s *Session) Wait(opts WaitOptions) error {
 
 // Hover hovers over an element
 func (s *Session) Hover(selector string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	el, err := s.Page.Element(selector)
+	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return err
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	el.MustWaitVisible().MustWaitStable()
 	return el.Hover()
 }
 
 // Scroll scrolls an element or page
 func (s *Session) Scroll(selector string, y int) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if selector == "" {
 		_, err := s.Page.Eval(fmt.Sprintf("window.scrollBy(0, %d)", y))
 		return err
 	}
 
-	el, err := s.Page.Element(selector)
+	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return err
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	el.MustWaitVisible().MustWaitStable()
 	return el.ScrollIntoView()
 }
 
 // DoubleClick performs a double click
 func (s *Session) DoubleClick(selector string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	el, err := s.Page.Element(selector)
+	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return err
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	el.MustWaitVisible().MustWaitStable()
 	return el.Click(proto.InputMouseButtonLeft, 2)
 }
 
 // RightClick performs a right click (context menu)
 func (s *Session) RightClick(selector string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	el, err := s.Page.Element(selector)
+	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return err
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	el.MustWaitVisible().MustWaitStable()
 	return el.Click(proto.InputMouseButtonRight, 1)
 }
 
 // SelectOption selects an option in a dropdown
 func (s *Session) SelectOption(selector string, value string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	el, err := s.Page.Element(selector)
+	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return err
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	el.MustWaitVisible().MustWaitStable()
 	// Select by value using JS
 	_, err = el.Eval(fmt.Sprintf(`el => { el.value = "%s"; el.dispatchEvent(new Event('change', { bubbles: true })); }`, value))
@@ -179,26 +184,26 @@ func (s *Session) GetPageURL() string {
 
 // IsElementVisible checks if an element is visible
 func (s *Session) IsElementVisible(selector string) (bool, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	el, err := s.Page.Element(selector)
+	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return false, err
 	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	return el.Visible()
 }
 
 // IsElementEnabled checks if an element is enabled
 func (s *Session) IsElementEnabled(selector string) (bool, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	el, err := s.Page.Element(selector)
+	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return false, err
 	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	res, err := el.Eval("el => el.disabled")
 	if err != nil {
@@ -209,26 +214,26 @@ func (s *Session) IsElementEnabled(selector string) (bool, error) {
 
 // GetElementText gets text content of an element
 func (s *Session) GetElementText(selector string) (string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	el, err := s.Page.Element(selector)
+	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return "", err
 	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	return el.Text()
 }
 
 // GetElementAttribute gets an attribute of an element
 func (s *Session) GetElementAttribute(selector, attr string) (string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	el, err := s.Page.Element(selector)
+	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return "", err
 	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	val, err := el.Attribute(attr)
 	if err != nil {
@@ -242,52 +247,58 @@ func (s *Session) GetElementAttribute(selector, attr string) (string, error) {
 
 // Focus focuses an element
 func (s *Session) Focus(selector string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	el, err := s.Page.Element(selector)
+	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return err
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	el.MustWaitVisible().MustWaitStable()
 	return el.Focus()
 }
 
 // Blur removes focus from an element
 func (s *Session) Blur(selector string) error {
+	el, err := s.resolveSelector(selector)
+	if err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.Page.Eval(fmt.Sprintf("document.querySelector('%s').blur()", selector))
+	_, err = el.Eval("el => el.blur()")
 	return err
 }
 
 // GetHTML gets the HTML of an element or page
 func (s *Session) GetHTML(selector string) (string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	if selector == "" {
 		return s.Page.HTML()
 	}
 
-	el, err := s.Page.Element(selector)
+	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return "", err
 	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	return el.HTML()
 }
 
 // GetOuterHTML gets the outer HTML of an element
 func (s *Session) GetOuterHTML(selector string) (string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	el, err := s.Page.Element(selector)
+	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return "", err
 	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	res, err := el.Eval("el => el.outerHTML")
 	if err != nil {

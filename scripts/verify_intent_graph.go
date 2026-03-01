@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/rennaisance-jomt/axon/internal/browser"
 	"github.com/rennaisance-jomt/axon/internal/config"
@@ -11,8 +12,9 @@ import (
 func main() {
 	// Boot up Zero-Overhead Context Pool
 	cfg := &config.BrowserConfig{
-		PoolSize:      1,
-		LaunchOptions: map[string]interface{}{"--no-sandbox": true},
+		PoolSize:       1,
+		MaxSessionLife: 30 * time.Minute,
+		LaunchOptions:  map[string]interface{}{"--no-sandbox": true},
 	}
 	pool, err := browser.NewPool(cfg)
 	if err != nil {
@@ -20,7 +22,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	sm := browser.NewSessionManager(pool)
+	sm := browser.NewSessionManager(pool, cfg.MaxSessionLife)
 	session, err := sm.Create("verification_session", "")
 	if err != nil {
 		log.Fatalf("Failed to create session: %v", err)

@@ -22,7 +22,7 @@
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/superclaw/axon.git
+git clone https://github.com/rennaisance-jomt/axon.git
 cd axon
 ```
 
@@ -209,10 +209,10 @@ result = agent.run("Go to x.com and post 'Hello world'")
 
 ---
 
-## Using with SuperClaw
+## Using with AI Agents
 
 ```python
-# In your SuperClaw agent configuration
+# In your agent configuration
 BROWSER_BACKEND = "axon"
 AXON_URL = "http://localhost:8020"
 ```
@@ -273,4 +273,9 @@ See `examples/` directory for more:
 
 ---
 
-*Axon Getting Started v1.0 | February 2026*
+<div align="center">
+
+*Axon Project | 2026*  
+*An AI-native browser built with ❤️ for AI agents.*
+
+</div>
