@@ -1,4 +1,6 @@
-![Axon Logo Banner](./docs/assets/banner.png)
+<div align="center">
+  <h1>AXON</h1>
+</div>
 
 <div align="center">
 
