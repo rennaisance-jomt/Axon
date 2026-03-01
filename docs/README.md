@@ -60,14 +60,12 @@ Every layer in this stack was designed for humans. The AI agent is a second-clas
 
 | Document | Description |
 |---|---|
-| [RESEARCH.md](./RESEARCH.md) | Deep analysis of existing browser automation tools and their limitations |
-| [COMPETITIVE_ANALYSIS.md](./COMPETITIVE_ANALYSIS.md) | How Axon compares to Playwright, Puppeteer, agent-browser, Browser-Use, etc. |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | Full technical architecture of Axon |
-| [FEATURES.md](./FEATURES.md) | Complete feature specification |
-| [SECURITY.md](./SECURITY.md) | Security model, threat vectors, and mitigations |
-| [ROADMAP.md](./ROADMAP.md) | Phased development roadmap |
-| [PROPOSAL.md](./PROPOSAL.md) | Formal project proposal |
-| [AGENT_INTERFACE.md](./AGENT_INTERFACE.md) | The agent-facing API design |
+| [**GETTING_STARTED.md**](./GETTING_STARTED.md) | Step-by-step installation and first session |
+| [**VISION.md**](./VISION.md) | Why the AI-native web matters for the future |
+| [**ARCHITECTURE.md**](./ARCHITECTURE.md) | Full technical architecture of Axon |
+| [**API_SPEC.md**](./API_SPEC.md) | Full REST API specification |
+| [**USE_CASES.md**](./USE_CASES.md) | Practical applications for AI agents |
+| [**SECURITY.md**](./SECURITY.md) | Security model, threat vectors, and mitigations |
 
 ---
 

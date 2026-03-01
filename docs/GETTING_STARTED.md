@@ -258,8 +258,6 @@ The URL was blocked by security. See SECURITY.md for allowlist configuration.
 |------|------|
 | Configure security | [SECURITY.md](./SECURITY.md) |
 | Understand API | [API_SPEC.md](./API_SPEC.md) |
-| Set up production | [DEPLOYMENT.md](./DEPLOYMENT.md) |
-| Contribute | [CONTRIBUTING.md](./CONTRIBUTING.md) |
 
 ---
 

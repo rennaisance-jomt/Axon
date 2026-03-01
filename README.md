@@ -156,7 +156,6 @@ Standard browsers for humans are a "black box" of token overhead. Axon is the fi
 | [**Architecture**](docs/ARCHITECTURE.md) | Deep technical dive into the 5-layer stack. |
 | [**API Reference**](docs/API_SPEC.md) | Full REST API specification. |
 | [**Security Model**](docs/SECURITY.md) | How we keep your agents (and data) safe. |
-| [**Roadmap**](docs/ROADMAP.md) | Project roadmap and future milestones. |
 
 ---
 
