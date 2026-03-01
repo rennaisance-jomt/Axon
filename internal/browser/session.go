@@ -1,9 +1,9 @@
 package browser
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,10 +22,11 @@ type Session struct {
 	Title      string                 `json:"title,omitempty"`
 	AuthState  string                 `json:"auth_state,omitempty"` // unknown, logged_in, logged_out
 	PageState  string                 `json:"page_state,omitempty"` // loading, ready, error
-	Context    *rod.BrowserContext   `json:"-"`
+	Context    *rod.Browser          `json:"-"`
 	Browser    *rod.Browser          `json:"-"`
-	Page       *rod.Page             `json:"-"`
-	mu         sync.RWMutex
+	Page           *rod.Page             `json:"-"`
+	KnownElements  map[string]string     `json:"known_elements,omitempty"` // Map intent to selector
+	mu             sync.RWMutex
 }
 
 // SessionManager manages multiple browser sessions
@@ -59,34 +60,60 @@ func (sm *SessionManager) Create(id string, profile string) (*Session, error) {
 	}
 
 	// Create browser context
-	var ctxOpts []rod.BrowserContextOption
-	if profile != "" {
-		ctxOpts = append(ctxOpts, rod.BrowserContextOptionStorageState(profile))
-	}
-
-	ctx, err := browser.CreateContext(ctxOpts...)
+	// Create incognito browser (acts as a context)
+	incognito, err := browser.Incognito()
 	if err != nil {
 		sm.pool.Release(browser)
-		return nil, fmt.Errorf("failed to create context: %w", err)
+		return nil, fmt.Errorf("failed to create incognito: %w", err)
 	}
 
 	// Create new page
-	page, err := ctx.CreatePage()
+	page, err := incognito.Page(proto.TargetCreateTarget{})
 	if err != nil {
-		ctx.Close()
 		sm.pool.Release(browser)
 		return nil, fmt.Errorf("failed to create page: %w", err)
 	}
 
+	// Sprint 4: Headless-Native Network Blocking
+	router := page.HijackRequests()
+	router.MustAdd("*", func(ctx *rod.Hijack) {
+		reqType := ctx.Request.Type()
+		urlStr := ctx.Request.URL().String()
+
+		// Aggressively drop visual assets to slash page load time
+		if reqType == proto.NetworkResourceTypeImage ||
+			reqType == proto.NetworkResourceTypeMedia ||
+			reqType == proto.NetworkResourceTypeFont ||
+			reqType == proto.NetworkResourceTypeStylesheet {
+			ctx.Response.Fail(proto.NetworkErrorReasonBlockedByClient)
+			return
+		}
+
+		// Analytics and known heavy trackers blocklist
+		if strings.Contains(urlStr, "google-analytics.com") ||
+			strings.Contains(urlStr, "doubleclick.net") ||
+			strings.Contains(urlStr, "facebook.net") ||
+			strings.Contains(urlStr, "clarity.ms") ||
+			strings.HasSuffix(urlStr, ".woff2") {
+			ctx.Response.Fail(proto.NetworkErrorReasonBlockedByClient)
+			return
+		}
+
+		// Allow all other requests (Fetch, XHR, Document, JS)
+		ctx.ContinueRequest(&proto.FetchContinueRequest{})
+	})
+	go router.Run()
+
 	session := &Session{
-		ID:         id,
-		Status:     "created",
-		Profile:    profile,
-		CreatedAt:  time.Now(),
-		LastAction: time.Now(),
-		Context:    ctx,
-		Browser:    browser,
-		Page:       page,
+		ID:            id,
+		Status:        "created",
+		Profile:       profile,
+		CreatedAt:     time.Now(),
+		LastAction:    time.Now(),
+		Context:       incognito,
+		Browser:       browser,
+		Page:          page,
+		KnownElements: make(map[string]string),
 	}
 
 	sm.sessions[id] = session
@@ -162,8 +189,8 @@ func (sm *SessionManager) Update(session *Session) {
 	}
 }
 
-// Navigate navigates to a URL
-func (s *Session) Navigate(url string) error {
+// Navigate navigates to a URL with optional wait condition
+func (s *Session) Navigate(url string, waitUntil string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -171,21 +198,71 @@ func (s *Session) Navigate(url string) error {
 		return fmt.Errorf("navigation failed: %w", err)
 	}
 
-	// Wait for load
-	if err := s.Page.WaitLoad(); err != nil {
-		return fmt.Errorf("wait load failed: %w", err)
+	// Wait based on condition
+	switch waitUntil {
+	case "networkidle":
+		_ = proto.DOMEnable{}.Call(s.Page)
+		_ = proto.AnimationEnable{}.Call(s.Page)
+		eventFired := make(chan bool, 1)
+		
+		go func() {
+			waitDOM := s.Page.WaitEvent(&proto.DOMChildNodeInserted{})
+			waitDOM()
+			eventFired <- true
+		}()
+
+		go func() {
+			waitAnim := s.Page.WaitEvent(&proto.AnimationAnimationCanceled{})
+			waitAnim()
+			eventFired <- true
+		}()
+
+		go func() {
+			_ = s.Page.WaitIdle(1 * time.Second)
+		}()
+		
+		select {
+		case <-eventFired:
+		case <-time.After(10 * time.Second):
+		}
+	case "domcontentloaded":
+		wait := s.Page.WaitEvent(&proto.PageDomContentEventFired{})
+		wait()
+	default:
+		// Default to load
+		if err := s.Page.WaitLoad(); err != nil {
+			return fmt.Errorf("wait load failed: %w", err)
+		}
 	}
 
 	// Update metadata
 	s.URL = url
 	s.Status = "active"
 
-	// Get title
-	if title, err := s.Page.Title(); err == nil {
-		s.Title = title
+	// Get title with retry
+	for i := 0; i < 5; i++ {
+		if res, err := s.Page.Eval("document.title"); err == nil {
+			title := res.Value.String()
+			if title != "" {
+				s.Title = title
+				break
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	return nil
+}
+
+// Resize resizes the browser window
+func (s *Session) Resize(width, height int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.Page.SetViewport(&proto.EmulationSetDeviceMetricsOverride{
+		Width:  width,
+		Height: height,
+	})
 }
 
 // NavigateBack goes back in history
@@ -193,10 +270,10 @@ func (s *Session) NavigateBack() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := s.Page.GoBack(); err != nil {
+	if _, err := s.Page.Eval("window.history.back()"); err != nil {
 		return fmt.Errorf("go back failed: %w", err)
 	}
-	s.Page.WaitLoad()
+	_ = s.Page.WaitLoad()
 	return nil
 }
 
@@ -205,10 +282,10 @@ func (s *Session) NavigateForward() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := s.Page.GoForward(); err != nil {
+	if _, err := s.Page.Eval("window.history.forward()"); err != nil {
 		return fmt.Errorf("go forward failed: %w", err)
 	}
-	s.Page.WaitLoad()
+	_ = s.Page.WaitLoad()
 	return nil
 }
 
@@ -220,7 +297,7 @@ func (s *Session) Reload() error {
 	if err := s.Page.Reload(); err != nil {
 		return fmt.Errorf("reload failed: %w", err)
 	}
-	s.Page.WaitLoad()
+	_ = s.Page.WaitLoad()
 	return nil
 }
 
@@ -233,8 +310,9 @@ func (s *Session) Click(selector string) error {
 	if err != nil {
 		return fmt.Errorf("element not found: %w", err)
 	}
+	element.MustWaitVisible().MustWaitStable()
 
-	return element.Click()
+	return element.Click(proto.InputMouseButtonLeft, 1)
 }
 
 // Fill fills an input field
@@ -246,6 +324,7 @@ func (s *Session) Fill(selector string, value string) error {
 	if err != nil {
 		return fmt.Errorf("element not found: %w", err)
 	}
+	element.MustWaitVisible().MustWaitStable()
 
 	return element.Input(value)
 }
@@ -259,8 +338,9 @@ func (s *Session) Press(selector string, key string) error {
 	if err != nil {
 		return fmt.Errorf("element not found: %w", err)
 	}
+	element.MustWaitVisible().MustWaitStable()
 
-	return element.Type(key)
+	return element.Input(key)
 }
 
 // Screenshot takes a screenshot
@@ -268,23 +348,25 @@ func (s *Session) Screenshot(fullPage bool) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.Page.Screenshot(fullPage, &proto.PageCaptureScreenshot{})
+	if fullPage {
+		return s.FullPageScreenshot()
+	}
+
+	return s.Page.Screenshot(false, &proto.PageCaptureScreenshot{})
 }
 
-// GetCookies gets all cookies
-func (s *Session) GetCookies() ([]*proto.NetworkCookie, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+// FullPageScreenshot takes a robust full-page screenshot using Chromium's native capture metrics
+func (s *Session) FullPageScreenshot() ([]byte, error) {
 
-	return s.Page.Cookies()
-}
-
-// SetCookies sets cookies
-func (s *Session) SetCookies(cookies []*proto.NetworkCookieParam) error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	return s.Page.SetCookies(cookies)
+	// Use rod's native full-page screenshot which leverages 
+	// Page.getLayoutMetrics and Emulation.setDeviceMetricsOverride
+	// to ensure the entire content is captured in one pass.
+	// This is more standard and robust than manual scrolling.
+	return s.Page.Screenshot(true, &proto.PageCaptureScreenshot{
+		Format:                proto.PageCaptureScreenshotFormatPng,
+		FromSurface:           true,
+		CaptureBeyondViewport: true,
+	})
 }
 
 // GetSessionJSON returns session as JSON

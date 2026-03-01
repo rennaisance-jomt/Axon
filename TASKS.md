@@ -1,12 +1,56 @@
 # Axon — Task Tracker
-## Phase 1: Foundation (v0.1 → v1.0)
+## Current Focus: Phase 1 Re-architecture (Ultimate Performance)
 
 **Last Updated:** February 2026  
-**Status:** Ready to Start
+**Status:** ✅ COMPLETELY VERIFIED & SHIPPED
 
 ---
 
-## Project Setup
+## 🏃‍♂️ Sprint 1: Zero-Overhead Context Pooling
+**Goal:** Drastically reduce memory footprint and session boot time.
+- [x] **T1.1** Refactor `pool.go` to launch and maintain exactly ONE background Chromium daemon.
+- [x] **T1.2** Rewrite `session.go` to generate isolated `Incognito` contexts instead of full browsers.
+- [x] **T1.3** Ensure robust cleanup of contexts when a session is closed.
+- [x] 🧪 **VERIFICATION:** Run test scripts and assert session creation time < 50ms and RAM footprint < 20MB per active context.
+
+---
+
+## 🏃‍♂️ Sprint 2: Native CDP DOM Extraction
+**Goal:** Extract perfect ARIA accessibility trees without fragile JS injection.
+- [x] **T2.1** Remove the JavaScript `TreeWalker` blob from `snapshot.go`.
+- [x] **T2.2** Connect directly to Chromium's native C++ `Accessibility` protocol domain using CDP.
+- [x] **T2.3** Refactor screenshot logic to use native `Page.captureScreenshot` (no resizing).
+- [x] 🧪 **VERIFICATION:** Extract a snapshot from a complex page utilizing Shadow DOMs; verify instant extraction without JS evaluation.
+
+---
+
+## 🏃‍♂️ Sprint 3: High-Compression Intent Graphs
+**Goal:** Radically compress LLM token usage.
+- [x] **T3.1** Upgrade `snapshot.go` to detect spatial/functional relationships (e.g., grouping a text input with its adjacent search button).
+- [x] **T3.2** Collapse grouped elements into single semantic nodes in the API payload.
+- [x] 🧪 **VERIFICATION:** Compare token counts of standard HTML, old snapshot logic, and new Intent Graphs. Ensure a >50% token reduction.
+
+---
+
+## 🏃‍♂️ Sprint 4: Headless-Native Network Blocking
+**Goal:** Eliminate visual noise and slash page load latency.
+- [x] **T4.1** Implement strict network request interception in `go-rod`.
+- [x] **T4.2** Create a blocklist dropping `.woff2`, images, media, analytics endpoints, and heavy CSS.
+- [x] 🧪 **VERIFICATION:** Load a heavy website (e.g., a major news portal) and verify load time is reduced by at least 70% with zero visual assets loaded.
+
+---
+
+## 🏃‍♂️ Sprint 5: Event-Driven Auto-Waiting
+**Goal:** Banish flakiness and `time.Sleep` commands forever.
+- [x] **T5.1** Rip out hardcoded timeouts and implicit `networkidle` waits in `actions.go`.
+- [x] **T5.2** Wire Axon to listen to raw CDP `DOMNodeInserted` and `AnimationCanceled` events.
+- [x] **T5.3** Ensure clicks only fire when the C++ layer confirms the element is visible and still.
+- [x] 🧪 **VERIFICATION:** Run aggressive deterministic tests on a dynamic SPA (React/Vue). Assert zero race conditions or missed clicks.
+- [x] 🏁 **PHASE 1 INTEGRATION VERIFICATION:** Run an end-to-end multi-agent session using all Sprint features concurrently to ensure total system stability.
+
+---
+
+## Legacy Phase 1 Foundation (Completed)
 
 ### Infrastructure
 

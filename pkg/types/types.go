@@ -161,11 +161,12 @@ type CreateSessionRequest struct {
 
 // StatusResponse represents a status response
 type StatusResponse struct {
-	URL        string `json:"url"`
-	Title      string `json:"title"`
-	AuthState  string `json:"auth_state"`
-	PageState  string `json:"page_state"`
-	Warnings   []Warning `json:"warnings"`
+	URL          string `json:"url"`
+	Title        string `json:"title"`
+	AuthState    string `json:"auth_state"`
+	PageState    string `json:"page_state"`
+	ScrollHeight int    `json:"scroll_height"`
+	Warnings     []Warning `json:"warnings"`
 }
 
 // Warning represents a warning

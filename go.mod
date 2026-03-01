@@ -1,4 +1,4 @@
-module github.com/rennaiseance-jomt/axon
+module github.com/rennaisance-jomt/axon
 
 go 1.23.0
 

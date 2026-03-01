@@ -56,7 +56,7 @@ func (s *Session) ExportCookies(path string) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	cookies, err := s.Page.Cookies()
+	cookies, err := s.Page.Cookies([]string{})
 	if err != nil {
 		return fmt.Errorf("failed to get cookies: %w", err)
 	}
@@ -106,7 +106,7 @@ func (s *Session) GetCookies(domain string) ([]*proto.NetworkCookie, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	cookies, err := s.Page.Cookies()
+	cookies, err := s.Page.Cookies([]string{})
 	if err != nil {
 		return nil, err
 	}
@@ -139,14 +139,19 @@ func (s *Session) ClearCookies() error {
 	defer s.mu.Unlock()
 
 	// Get all cookies
-	cookies, err := s.Page.Cookies()
+	cookies, err := s.Page.Cookies([]string{})
 	if err != nil {
 		return err
 	}
 
 	// Delete each cookie
 	for _, c := range cookies {
-		if err := s.Page.DeleteCookie(c.Name); err != nil {
+		err := proto.NetworkDeleteCookies{
+			Name:   c.Name,
+			Domain: c.Domain,
+			Path:   c.Path,
+		}.Call(s.Page)
+		if err != nil {
 			return err
 		}
 	}

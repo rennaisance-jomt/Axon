@@ -1,0 +1,254 @@
+{
+  "session_id": "kuralit_test",
+  "url": "https://kuralit.com/",
+  "title": "",
+  "state": "ready",
+  "auth_state": "unknown",
+  "depth": "compact",
+  "content": "PAGE: kuralit.com/ | Title:  | State: ready\n\nINPUTS:\n  [i15]  (enter_email_address...) \u2014 textbox\n\nACTIONS:\n  [b5] Toggle Dark Mode (button)\n  [b11] Close notification (button)\n  [b16] Subscribe (button)\n  [b24] Close notification (button)\n\n",
+  "elements": [
+    {
+      "ref": "a1",
+      "type": "a",
+      "label": "Kuralit",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a2",
+      "type": "a",
+      "label": "Documentation",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a3",
+      "type": "a",
+      "label": "Community",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a4",
+      "type": "a",
+      "label": "Changelog",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b5",
+      "type": "button",
+      "label": "Toggle Dark Mode",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a6",
+      "type": "a",
+      "label": "Talk to Founders",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a7",
+      "type": "a",
+      "label": "Documentation",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": false,
+      "enabled": true
+    },
+    {
+      "ref": "a8",
+      "type": "a",
+      "label": "Community",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": false,
+      "enabled": true
+    },
+    {
+      "ref": "a9",
+      "type": "a",
+      "label": "Changelog",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": false,
+      "enabled": true
+    },
+    {
+      "ref": "a10",
+      "type": "a",
+      "label": "Talk to Founders",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": false,
+      "enabled": true
+    },
+    {
+      "ref": "b11",
+      "type": "button",
+      "label": "Close notification",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a12",
+      "type": "a",
+      "label": "Talk to Founders",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a13",
+      "type": "a",
+      "label": "Watch Demo",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a14",
+      "type": "a",
+      "label": "hello@kuralit.com",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "i15",
+      "type": "textbox",
+      "label": "",
+      "placeholder": "enter_email_address...",
+      "intent": "unknown",
+      "role": "input",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b16",
+      "type": "button",
+      "label": "Subscribe",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a17",
+      "type": "a",
+      "label": "Docs",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a18",
+      "type": "a",
+      "label": "API",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a19",
+      "type": "a",
+      "label": "Status",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a20",
+      "type": "a",
+      "label": "Blog",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a21",
+      "type": "a",
+      "label": "Support",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a22",
+      "type": "a",
+      "label": "Privacy",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a23",
+      "type": "a",
+      "label": "Terms",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b24",
+      "type": "button",
+      "label": "Close notification",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    }
+  ],
+  "timestamp": "2026-02-28T03:46:16Z",
+  "token_count": 60
+}

@@ -134,9 +134,9 @@ func TestSession_StatusTransitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			session := &Session{
-				ID:      "test",
-				Status:  tt.initial,
+			_ = &Session{
+				ID:     "test",
+				Status: tt.initial,
 			}
 
 			validTransitions := map[string][]string{

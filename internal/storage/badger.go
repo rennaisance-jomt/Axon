@@ -1,6 +1,8 @@
 package storage
 
 import (
+
+	"encoding/binary"
 	"fmt"
 
 	"github.com/dgraph-io/badger/v4"
@@ -77,20 +79,22 @@ func (d *DB) AppendAuditLog(data []byte) error {
 		var index uint64
 		item, err := txn.Get([]byte("audit:index"))
 		if err == nil {
-			value, _ := item.ValueCopy(nil)
-			// Parse index (simplified)
-			index = 0
-			_ = value
+			val, _ := item.ValueCopy(nil)
+			if len(val) == 8 {
+				index = binary.BigEndian.Uint64(val)
+			}
 		}
 
 		// Store new entry
-		key := fmt.Sprintf("audit:%d", index)
+		key := fmt.Sprintf("audit:log:%016d", index)
 		if err := txn.Set([]byte(key), data); err != nil {
 			return err
 		}
 
 		// Increment index
-		return txn.Set([]byte("audit:index"), []byte(fmt.Sprintf("%d", index+1)))
+		newIndex := make([]byte, 8)
+		binary.BigEndian.PutUint64(newIndex, index+1)
+		return txn.Set([]byte("audit:index"), newIndex)
 	})
 }
 
@@ -99,16 +103,11 @@ func (d *DB) GetAuditLogs(limit, offset int) ([][]byte, error) {
 	err := d.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
-		prefix := []byte("audit:")
+		prefix := []byte("audit:log:")
 		count := 0
 		skipped := 0
 
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			key := string(it.Item().Key())
-			if key == "audit:index" {
-				continue
-			}
-
 			if skipped < offset {
 				skipped++
 				continue

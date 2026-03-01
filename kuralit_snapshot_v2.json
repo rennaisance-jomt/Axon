@@ -1,0 +1,664 @@
+{
+  "session_id": "kuralit_v2",
+  "url": "https://kuralit.com/",
+  "title": "",
+  "state": "ready",
+  "auth_state": "unknown",
+  "depth": "compact",
+  "content": "PAGE: kuralit.com/ | Title:  | State: ready\n\nINPUTS:\n  [i56]  (enter_email_address...) \u2014 textbox\n\nACTIONS:\n  [b5] Toggle Dark Mode (button)\n  [b11] Close notification (button)\n  [b14] Store (button)\n  [b15] Home (button)\n  [b16] Estate (button)\n  [b17] Ride (button)\n  [b18] Work (button)\n  [b19] Run Demo (button)\n  [b23] Copy (button)\n  [b24] android (button)\n  [b25] ios (button)\n  [b26] EcCommerce (button)\n  [b27] FnFinTech (button)\n  [b28] HmIoT (button)\n  [b29] TrTravel (button)\n  [b30] AuAuto (button)\n  [b31] MdMedia (button)\n  [b32] PrProductivity (button)\n  [b33] SoSocial (button)\n  [b34] CrCRM (button)\n  [b35] LgLogistics (button)\n  [b36] NwNews (button)\n  [b37] ScSecurity (button)\n  [b38] GmGaming (button)\n  [b39] HpHospitality (button)\n  [b40] HlHealth (button)\n  [b41] EdEdTech (button)\n  [b42] AcAccess (button)\n  [b43] InIndustry (button)\n  [b44] DvDevOps (button)\n  [b45] SpSupport (button)\n  [b46] 01What is Kuralit? (button)\n  [b47] 02What are AI Voice Agents? (button)\n  [b48] 03How do I get started? (button)\n  [b49] 04Do I need to be a programmer to use Kuralit? (button)\n  [b50] 05What can I build with Kuralit? (button)\n  [b51] 06How does voice recognition work? (button)\n  [b52] 07Can the AI agent actually do things, or just tal (button)\n  [b53] 08What if I have problems or need help? (button)\n  [b57] Subscribe (button)\n  [b65] Close notification (button)\n\n",
+  "elements": [
+    {
+      "ref": "a1",
+      "type": "a",
+      "label": "Kuralit",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a2",
+      "type": "a",
+      "label": "Documentation",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a3",
+      "type": "a",
+      "label": "Community",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a4",
+      "type": "a",
+      "label": "Changelog",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b5",
+      "type": "button",
+      "label": "Toggle Dark Mode",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a6",
+      "type": "a",
+      "label": "Talk to Founders",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a7",
+      "type": "a",
+      "label": "Documentation",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": false,
+      "enabled": true
+    },
+    {
+      "ref": "a8",
+      "type": "a",
+      "label": "Community",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": false,
+      "enabled": true
+    },
+    {
+      "ref": "a9",
+      "type": "a",
+      "label": "Changelog",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": false,
+      "enabled": true
+    },
+    {
+      "ref": "a10",
+      "type": "a",
+      "label": "Talk to Founders",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": false,
+      "enabled": true
+    },
+    {
+      "ref": "b11",
+      "type": "button",
+      "label": "Close notification",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a12",
+      "type": "a",
+      "label": "Get a Demo",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a13",
+      "type": "a",
+      "label": "Watch Demo",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b14",
+      "type": "button",
+      "label": "Store",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b15",
+      "type": "button",
+      "label": "Home",
+      "intent": "nav.primary",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b16",
+      "type": "button",
+      "label": "Estate",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b17",
+      "type": "button",
+      "label": "Ride",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b18",
+      "type": "button",
+      "label": "Work",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b19",
+      "type": "button",
+      "label": "Run Demo",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a20",
+      "type": "a",
+      "label": "Ask ChatGPT",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a21",
+      "type": "a",
+      "label": "Ask Perplexity",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a22",
+      "type": "a",
+      "label": "Ask Grok",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b23",
+      "type": "button",
+      "label": "Copy",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b24",
+      "type": "button",
+      "label": "android",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b25",
+      "type": "button",
+      "label": "ios",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b26",
+      "type": "button",
+      "label": "EcCommerce",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b27",
+      "type": "button",
+      "label": "FnFinTech",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b28",
+      "type": "button",
+      "label": "HmIoT",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b29",
+      "type": "button",
+      "label": "TrTravel",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b30",
+      "type": "button",
+      "label": "AuAuto",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b31",
+      "type": "button",
+      "label": "MdMedia",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b32",
+      "type": "button",
+      "label": "PrProductivity",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b33",
+      "type": "button",
+      "label": "SoSocial",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b34",
+      "type": "button",
+      "label": "CrCRM",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b35",
+      "type": "button",
+      "label": "LgLogistics",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b36",
+      "type": "button",
+      "label": "NwNews",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b37",
+      "type": "button",
+      "label": "ScSecurity",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b38",
+      "type": "button",
+      "label": "GmGaming",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b39",
+      "type": "button",
+      "label": "HpHospitality",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b40",
+      "type": "button",
+      "label": "HlHealth",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b41",
+      "type": "button",
+      "label": "EdEdTech",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b42",
+      "type": "button",
+      "label": "AcAccess",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b43",
+      "type": "button",
+      "label": "InIndustry",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b44",
+      "type": "button",
+      "label": "DvDevOps",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b45",
+      "type": "button",
+      "label": "SpSupport",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b46",
+      "type": "button",
+      "label": "01What is Kuralit?",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b47",
+      "type": "button",
+      "label": "02What are AI Voice Agents?",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b48",
+      "type": "button",
+      "label": "03How do I get started?",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b49",
+      "type": "button",
+      "label": "04Do I need to be a programmer to use Kuralit?",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b50",
+      "type": "button",
+      "label": "05What can I build with Kuralit?",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b51",
+      "type": "button",
+      "label": "06How does voice recognition work?",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b52",
+      "type": "button",
+      "label": "07Can the AI agent actually do things, or just tal",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b53",
+      "type": "button",
+      "label": "08What if I have problems or need help?",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a54",
+      "type": "a",
+      "label": "Talk to Founders",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a55",
+      "type": "a",
+      "label": "hello@kuralit.com",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "i56",
+      "type": "textbox",
+      "label": "",
+      "placeholder": "enter_email_address...",
+      "intent": "unknown",
+      "role": "input",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b57",
+      "type": "button",
+      "label": "Subscribe",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a58",
+      "type": "a",
+      "label": "Docs",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a59",
+      "type": "a",
+      "label": "API",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a60",
+      "type": "a",
+      "label": "Status",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a61",
+      "type": "a",
+      "label": "Blog",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a62",
+      "type": "a",
+      "label": "Support",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a63",
+      "type": "a",
+      "label": "Privacy",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "a64",
+      "type": "a",
+      "label": "Terms",
+      "intent": "unknown",
+      "role": "a",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    },
+    {
+      "ref": "b65",
+      "type": "button",
+      "label": "Close notification",
+      "intent": "unknown",
+      "role": "button",
+      "reversible": "read",
+      "visible": true,
+      "enabled": true
+    }
+  ],
+  "timestamp": "2026-02-28T03:49:51Z",
+  "token_count": 348
+}

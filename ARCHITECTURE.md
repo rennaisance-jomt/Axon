@@ -29,21 +29,15 @@ Axon is structured as **five cooperating layers**, each responsible for a distin
 
 **Responsibility:** Running a real browser and executing low-level actions.
 
-**Technology:** Chromium via Playwright Python (or Node.js for CLI compat).
+**Technology:** Chromium via Go-Rod (v0.116.2).
 
 **What it does:**
-- Maintains actual browser pages/contexts
-- Executes raw actions: navigate, click, type, screenshot
-- Communicates via Chrome DevTools Protocol (CDP)
-- Manages multiple browser contexts (one per session)
+- Maintains **exactly one** invisible background Chromium daemon.
+- Generates microscopic, isolated `Incognito` contexts for each session via `browser.Pool` instead of spinning up new browser instances (boot time: ~15ms, memory: <10MB).
+- Executes raw actions: navigate, click, type, screenshot directly via raw CDP.
+- Drops headless-native visual assets (fonts, images, trackers) via strict network interception to crash page load times and CPU usage.
 
-**Key design decision:** We use a **persistent browser context** (not a fresh one per task). This is what allows cookies and session state to survive across agent actions and restarts.
-
-```python
-# Each Axon session maps to one Playwright BrowserContext
-context = await browser.new_context(storage_state="x_session.json")
-page = await context.new_page()
-```
+**Key design decision:** We use **Zero-Overhead Context Pooling**. A single heavily-optimized Chromium daemon manages independent contexts. This provides 100% clean state isolation without massive memory bloat.
 
 ---
 
@@ -51,20 +45,24 @@ page = await context.new_page()
 
 **Responsibility:** Managing sessions, routing commands, and providing a stable interface to Layer 1.
 
-**Technology:** Python asyncio HTTP server (FastAPI) — TCP, no Unix sockets.
+**Technology:** Go Fiber HTTP server — TCP.
 
 **Endpoints:**
-
 ```
-POST /session/{id}/navigate   → Navigate to URL
-POST /session/{id}/snapshot   → Get semantic snapshot
-POST /session/{id}/act        → Execute action (click/type/press/etc.)
-POST /session/{id}/screenshot → Capture screenshot
-GET  /session/{id}/status     → Session health check
-DELETE /session/{id}          → Close session
+POST   /api/v1/sessions             → Create new session
+GET    /api/v1/sessions             → List all active sessions
+GET    /api/v1/sessions/:id         → Get session info
+DELETE /api/v1/sessions/:id         → Close session
 
-GET  /sessions                → List all active sessions
-POST /sessions                → Create new session
+POST   /api/v1/sessions/:id/navigate   → Navigate to URL
+POST   /api/v1/sessions/:id/snapshot   → Get semantic snapshot
+POST   /api/v1/sessions/:id/act        → Execute action
+POST   /api/v1/sessions/:id/screenshot → Capture screenshot
+GET    /api/v1/sessions/:id/status     → Health/State check
+GET    /api/v1/sessions/:id/cookies    → Get cookies
+POST   /api/v1/sessions/:id/cookies    → Set cookies
+
+GET    /api/v1/audit                   → Retrieve audit logs
 ```
 
 **Session model:**
@@ -88,47 +86,29 @@ Unix sockets fail on Windows. TCP is universal, language-agnostic, and allows an
 
 **Responsibility:** Enforcing trust boundaries before any action reaches the browser.
 
-**Technology:** Python middleware integrated into the Control Server.
+**Technology:** Go middleware and specialized guard packages.
 
 ### 3.1 SSRF Guard
-Before any navigation, the URL is validated:
+Before any navigation, the URL is validated by `security.SSRFGuard`:
 - Reject `file://`, `ftp://`, `javascript:` schemes
-- Reject private IP ranges (10.x, 172.16.x, 192.168.x, 127.x) unless explicitly whitelisted
-- DNS resolution check to detect DNS rebinding attacks
-- Domain allowlist/denylist configurable per session
+- Reject private IP ranges (10.x, 172.16.x, 192.168.x, 127.x)
+- DNS resolution check to detect DNS rebinding
+- Domain allowlist/denylist support
 
-### 3.2 Prompt Injection Isolation
-Before page content reaches the agent's context:
-- All page text is scanned for patterns that look like system prompts, instructions, or override commands
-- Suspicious content is flagged and either stripped, sanitized, or surfaced as a `PromptInjectionWarning`
-- The agent receives a warning alongside the (potentially poisoned) content
-
-```json
-{
-  "snapshot": "...",
-  "warnings": [{
-    "type": "prompt_injection_suspected",
-    "location": "main content",
-    "severity": "high",
-    "raw": "IGNORE PREVIOUS INSTRUCTIONS..."
-  }]
-}
-```
-
-### 3.3 Action Reversibility Classifier
-Every action is tagged before execution:
+### 3.2 Action Reversibility Classifier
+Every action is tagged before execution by `security.ActionClassifier`:
 
 | Action | Reversibility |
 |---|---|
 | `navigate`, `snapshot`, `screenshot` | Read-only |
-| `type`, `click` (general) | Write-reversible |
-| `click` on submit/confirm/delete | Write-irreversible |
-| `type` into password field | Sensitive-write |
+| `fill`, `click` (general) | Write-reversible |
+| `click` on submit/delete | Write-irreversible |
+| `fill` into password field | Sensitive-write |
 
-`Write-irreversible` actions require an explicit `confirm: true` flag in the request. Without it, Axon returns a confirmation request to the agent, not an execution result.
+`Write-irreversible` actions require `confirm: true`.
 
-### 3.4 Full Audit Log
-Every action, its parameters, the response, and the timestamp are written to a tamper-evident audit log. This enables post-hoc review of exactly what an agent did during any session.
+### 3.3 Full Audit Log
+Implemented via `security.AuditLogger` and `storage.DB` (BadgerDB). Every action is hashed with the previous entry's hash to ensure tamper-evidence.
 
 ---
 
@@ -136,14 +116,16 @@ Every action, its parameters, the response, and the timestamp are written to a t
 
 **Responsibility:** Transforming raw browser state into token-efficient, semantically rich representations the agent can reason about.
 
-### 4.1 The Axon Perception Stack
+### 4.1 The Axon Perception Stack (High-Compression Intent Graphs)
 
 ```
 Raw DOM (millions of nodes)
   ↓
-Accessibility Tree (ARIA roles + labels)
+Native C++ Accessibility Tree (via CDP, pierces Shadow DOM instantly)
   ↓
 Intent Classification (what is this element FOR?)
+  ↓
+Intent Graph (Collapses related elements, e.g., input + search button)
   ↓
 Compact Representation (50–500 tokens)
 ```

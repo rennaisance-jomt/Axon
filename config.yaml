@@ -9,7 +9,7 @@ server:
 browser:
   headless: true
   binary_path: ""
-  pool_size: 5
+  pool_size: 2
   launch_options:
     args:
       - "--no-sandbox"

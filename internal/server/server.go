@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -12,16 +11,20 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/rennaisance-jomt/axon/internal/browser"
 	"github.com/rennaisance-jomt/axon/internal/config"
 	"github.com/rennaisance-jomt/axon/internal/storage"
 )
 
 // Server represents the Axon HTTP server
 type Server struct {
-	app    *fiber.App
-	cfg    *config.Config
-	mu     sync.RWMutex
-	start  time.Time
+	app      *fiber.App
+	cfg      *config.Config
+	handlers *Handlers
+	pool     *browser.Pool
+	db       *storage.DB
+	mu       sync.RWMutex
+	start    time.Time
 }
 
 // New creates a new Server instance
@@ -34,11 +37,34 @@ func New(cfg *config.Config) *Server {
 
 // Start starts the HTTP server
 func (s *Server) Start() error {
+	// Initialize browser pool
+	pool, err := browser.NewPool(&s.cfg.Browser)
+	if err != nil {
+		return fmt.Errorf("failed to initialize browser pool: %w", err)
+	}
+	s.pool = pool
+
+	// Initialize storage
+	db, err := storage.New(s.cfg.Storage.Path)
+	if err != nil {
+		return fmt.Errorf("failed to initialize storage: %w", err)
+	}
+	s.db = db
+
+	// Initialize handlers
+	s.handlers = NewHandlers(pool, db, s.cfg)
+
 	// Create Fiber app
 	s.app = fiber.New(fiber.Config{
 		ReadTimeout:  s.cfg.Server.ReadTimeout,
 		WriteTimeout: s.cfg.Server.WriteTimeout,
 		AppName:      "Axon",
+		ErrorHandler: func(c *fiber.Ctx, err error) error {
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+				"error":   true,
+				"message": err.Error(),
+			})
+		},
 	})
 
 	// Middleware
@@ -46,31 +72,19 @@ func (s *Server) Start() error {
 	s.app.Use(logger.New())
 	s.app.Use(cors.New())
 
-	// Initialize storage
-	db, err := storage.New(s.cfg.Storage.Path)
-	if err != nil {
-		return fmt.Errorf("failed to initialize storage: %w", err)
-	}
-	s.app.Storage().Set("db", db)
-
-	// Routes
+	// routes
 	s.setupRoutes()
 
 	// Start listener
 	addr := fmt.Sprintf("%s:%d", s.cfg.Server.Host, s.cfg.Server.Port)
-	
-	// Check if port is available
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", addr, err)
-	}
-	ln.Close()
-
-	return s.app.Listener(ln)
+	return s.app.Listen(addr)
 }
 
 // Stop gracefully stops the server
 func (s *Server) Stop() error {
+	if s.pool != nil {
+		s.pool.Close()
+	}
 	if s.app != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -95,23 +109,24 @@ func (s *Server) setupRoutes() {
 
 	// Sessions
 	sessions := api.Group("/sessions")
-	sessions.Get("/", s.handleListSessions)
-	sessions.Post("/", s.handleCreateSession)
-	sessions.Get("/:id", s.handleGetSession)
-	sessions.Delete("/:id", s.handleDeleteSession)
+	sessions.Get("", s.handlers.handleListSessions)
+	sessions.Post("", s.handlers.handleCreateSession)
+	sessions.Get("/:id", s.handlers.handleGetSession)
+	sessions.Delete("/:id", s.handlers.handleDeleteSession)
 
 	// Session actions
-	sessions.Post("/:id/navigate", s.handleNavigate)
-	sessions.Post("/:id/snapshot", s.handleSnapshot)
-	sessions.Post("/:id/act", s.handleAct)
-	sessions.Get("/:id/status", s.handleStatus)
-	sessions.Post("/:id/screenshot", s.handleScreenshot)
-	sessions.Post("/:id/wait", s.handleWait)
-	sessions.Get("/:id/cookies", s.handleGetCookies)
-	sessions.Post("/:id/cookies", s.handleSetCookies)
+	sessions.Post("/:id/navigate", s.handlers.handleNavigate)
+	sessions.Post("/:id/snapshot", s.handlers.handleSnapshot)
+	sessions.Post("/:id/act", s.handlers.handleAct)
+	sessions.Get("/:id/status", s.handlers.handleStatus)
+	sessions.Post("/:id/screenshot", s.handlers.handleScreenshot)
+	sessions.Post("/:id/resize", s.handlers.handleResize)
+	sessions.Post("/:id/wait", s.handlers.handleWait)
+	sessions.Get("/:id/cookies", s.handlers.handleGetCookies)
+	sessions.Post("/:id/cookies", s.handlers.handleSetCookies)
 
 	// Audit
-	api.Get("/audit", s.handleAudit)
+	api.Get("/audit", s.handlers.handleAudit)
 }
 
 // Health check handler
@@ -123,90 +138,3 @@ func (s *Server) handleHealth(c *fiber.Ctx) error {
 	})
 }
 
-// Session handlers
-func (s *Server) handleListSessions(c *fiber.Ctx) error {
-	// TODO: Implement
-	return c.JSON(fiber.Map{"sessions": []interface{}{}})
-}
-
-func (s *Server) handleCreateSession(c *fiber.Ctx) error {
-	// TODO: Implement
-	return c.Status(http.StatusCreated).JSON(fiber.Map{
-		"session_id": "example",
-		"status":     "created",
-	})
-}
-
-func (s *Server) handleGetSession(c *fiber.Ctx) error {
-	// TODO: Implement
-	return c.JSON(fiber.Map{
-		"session_id": c.Params("id"),
-		"status":     "active",
-	})
-}
-
-func (s *Server) handleDeleteSession(c *fiber.Ctx) error {
-	// TODO: Implement
-	return c.SendStatus(http.StatusNoContent)
-}
-
-func (s *Server) handleNavigate(c *fiber.Ctx) error {
-	// TODO: Implement
-	return c.JSON(fiber.Map{
-		"success": true,
-		"url":     "https://example.com",
-	})
-}
-
-func (s *Server) handleSnapshot(c *fiber.Ctx) error {
-	// TODO: Implement
-	return c.JSON(fiber.Map{
-		"content": "PAGE: example.com\n\n[e1] Example (link)",
-	})
-}
-
-func (s *Server) handleAct(c *fiber.Ctx) error {
-	// TODO: Implement
-	return c.JSON(fiber.Map{
-		"success": true,
-		"result":  "Clicked element",
-	})
-}
-
-func (s *Server) handleStatus(c *fiber.Ctx) error {
-	// TODO: Implement
-	return c.JSON(fiber.Map{
-		"url":        "https://example.com",
-		"auth_state": "unknown",
-	})
-}
-
-func (s *Server) handleScreenshot(c *fiber.Ctx) error {
-	// TODO: Implement
-	return c.JSON(fiber.Map{
-		"path": "/screenshots/screenshot.png",
-	})
-}
-
-func (s *Server) handleWait(c *fiber.Ctx) error {
-	// TODO: Implement
-	return c.JSON(fiber.Map{
-		"success": true,
-		"matched": false,
-	})
-}
-
-func (s *Server) handleGetCookies(c *fiber.Ctx) error {
-	// TODO: Implement
-	return c.JSON(fiber.Map{"cookies": []interface{}{}})
-}
-
-func (s *Server) handleSetCookies(c *fiber.Ctx) error {
-	// TODO: Implement
-	return c.SendStatus(http.StatusNoContent)
-}
-
-func (s *Server) handleAudit(c *fiber.Ctx) error {
-	// TODO: Implement
-	return c.JSON(fiber.Map{"logs": []interface{}{}})
-}

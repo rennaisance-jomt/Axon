@@ -7,25 +7,18 @@
 
 ## Comparison Matrix
 
-| Feature | Playwright | Puppeteer | agent-browser | Browser-Use | Computer Use | OpenAI Operator | **Axon** |
-|---|---|---|---|---|---|---|---|
-| **Agent-native API** | ❌ | ❌ | Partial | Partial | ❌ | Partial | ✅ |
-| **Semantic snapshots** | ❌ | ❌ | ✅ | Partial | ❌ | Unknown | ✅ Enhanced |
-| **Intent-based element resolution** | ❌ | ❌ | ❌ | ❌ | Partial | Unknown | ✅ |
-| **Token-optimized output** | ❌ | ❌ | Partial | ❌ | ❌ | Unknown | ✅ |
-| **Session persistence / auth vault** | Manual | Manual | Basic | ❌ | ❌ | Hosted | ✅ Native |
-| **Prompt injection defense** | ❌ | ❌ | ❌ | ❌ | ❌ | Unknown | ✅ |
-| **SSRF protection** | ❌ | ❌ | ❌ | ❌ | ❌ | Partial | ✅ |
-| **Action reversibility classifier** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| **Multi-agent parallel sessions** | Manual | Manual | ❌ | ❌ | ❌ | Unknown | ✅ |
-| **Structured error objects** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| **Semantic action memory** | ❌ | ❌ | ❌ | ❌ | ❌ | Hosted | ✅ |
-| **Unknown state handling (CAPTCHA etc.)** | Crash | Crash | Error | Partial | Partial | Unknown | ✅ Structured |
-| **Works on Windows natively** | ✅ | ✅ | ❌ (socket bug) | ✅ | Cloud | Cloud | ✅ |
-| **Self-hosted / private** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
-| **Open source / extensible** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
-| **Token cost per action** | Very High | Very High | Medium | Very High | Very High | Unknown | **Low** |
-| **Latency per action** | Low | Low | Low-Med | High | Very High | Medium | **Low** |
+| Feature | Browserbase | Steel.dev | Playwright | Vercel Agent Browser | **Axon** |
+|---|---|---|---|---|---|
+| **Category** | Cloud BaaS | Cloud BaaS | Testing Lib | CLI Client | **API Client** |
+| **Agent-native API** | Partial | Partial | ❌ | Partial | **✅ Native** |
+| **Semantic snapshots** | ❌ | ❌ | ❌ | Partial | **✅ Enhanced** |
+| **Intent-based resolution** | ❌ | ❌ | ❌ | Partial | **✅ Intent Graph** |
+| **Token-optimized output** | ❌ | Partial | ❌ | ✅ | **✅ High Compression**|
+| **Stealth / Anti-bot** | ✅ Native | ✅ Native | Manual | Manual | **Proxy support** |
+| **Prompt injection defense** | ❌ | ❌ | ❌ | ❌ | **✅ Built-in** |
+| **Action reversibility** | ❌ | ❌ | ❌ | ❌ | **✅ Built-in** |
+| **Self-hosted / private** | ❌ | ✅ | ✅ | ✅ | **✅ Pure Local** |
+| **Dependencies** | Cloud | Node/Cloud | Node.js | Rust/Node | **Single Go Binary** |
 
 ---
 
@@ -43,20 +36,14 @@
 
 ## Where Each Tool Wins
 
-### Playwright: Production test automation
-When a human QA engineer writes deterministic scripts for a product they control. Axon doesn't compete here.
+### Browserbase & Steel.dev: Cloud Infrastructure (BaaS)
+These are **infrastructure providers**. When you need to spin up 10,000 headless browsers simultaneously, route them through residential proxies, and automatically resolve CAPTCHAs, you use these platforms. They handle server management. Axon does not compete with them; an agent could conceivably plug Axon *into* Steel.dev's cloud fleet.
 
-### Browser-Use: Visual-first tasks
-When the AI genuinely needs to see the visual layout — e.g., parsing charts, reading images, understanding design. Axon can delegate to vision when needed but doesn't lead with it.
+### Vercel Agent Browser: CLI Token Optimization
+Vercel's primary innovation is the "Snapshot + Refs" system (`@e1`). It strips raw HTML down to actionable IDs, saving massive amounts of LLM context window space. However, it is fundamentally a CLI tool designed for developers using tools like Cursor, requiring Node.js dependencies, and lacks explicit cognitive security guardrails.
 
-### Computer Use: Non-browser desktop tasks
-When the agent needs to control native apps (Excel, Photoshop, etc.). Out of scope for Axon entirely.
-
-### agent-browser: Quick CLI-based automation
-Already a strong tool for developers who are comfortable with CLIs. Axon builds on its snapshot concepts but adds the security, memory, and intent layers on top.
-
-### **Axon: AI-agent-native web interaction**
-When an AI agent needs to browse the web as part of a larger autonomous workflow — with security, memory, low token cost, and structured error handling. This is Axon's sole focus.
+### **Axon: The Secure, Single-Binary Semantic Engine**
+Axon occupies a unique space. It takes the token optimization of Vercel (Snapshots + Refs) and wraps it in a **Single Go Binary** with zero dependencies. More importantly, it acts as a **Cognitive Firewall**. Before the agent even sees the DOM, Axon scans it for prompt injections. Before an agent clicks a button, Axon classifies its reversibility (e.g., preventing accidental purchases). It is built for autonomous, multi-agent frameworks that require extreme speed, local privacy, and self-hosted reliability.
 
 ---
 

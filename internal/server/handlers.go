@@ -1,37 +1,45 @@
 package server
 
 import (
+
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rennaisance-jomt/axon/internal/browser"
-	"github.com/rennaiseance-jomt/axon/internal/config"
-	"github.com/rennaiseance-jomt/axon/internal/security"
-	"github.com/rennaiseance-jomt/axon/pkg/types"
+	"github.com/rennaisance-jomt/axon/internal/config"
+	"github.com/rennaisance-jomt/axon/internal/security"
+	"github.com/rennaisance-jomt/axon/pkg/types"
+	"github.com/rennaisance-jomt/axon/internal/storage"
+	"github.com/go-rod/rod/lib/proto"
 )
 
 // Handlers holds all handlers
 type Handlers struct {
 	sessions    *browser.SessionManager
 	pool        *browser.Pool
-	ssrfGuard   *security.SSRFGuard
-	classifier  *security.ActionClassifier
-	auditLogger *security.AuditLogger
-	cfg         *config.Config
+	db          *storage.DB
+	ssrfGuard       *security.SSRFGuard
+	classifier      *security.ActionClassifier
+	promptGuard     *security.PromptInjectionGuard
+	auditLogger     *security.AuditLogger
+	cfg             *config.Config
 }
 
 // NewHandlers creates new handlers
-func NewHandlers(pool *browser.Pool, cfg *config.Config) *Handlers {
+func NewHandlers(pool *browser.Pool, db *storage.DB, cfg *config.Config) *Handlers {
 	return &Handlers{
 		sessions:    browser.NewSessionManager(pool),
 		pool:        pool,
+		db:          db,
 		ssrfGuard:   security.NewSSRFGuard(cfg.Security.SSRF.AllowPrivateNetwork, cfg.Security.SSRF.DomainAllowlist, cfg.Security.SSRF.DomainDenylist, cfg.Security.SSRF.SchemeAllowlist),
 		classifier:  security.NewActionClassifier(),
+		promptGuard: security.NewPromptInjectionGuard(),
 		auditLogger: security.NewAuditLogger(),
 		cfg:         cfg,
 	}
@@ -159,7 +167,7 @@ func (h *Handlers) handleNavigate(c *fiber.Ctx) error {
 	}
 
 	// Navigate
-	if err := session.Navigate(req.URL); err != nil {
+	if err := session.Navigate(req.URL, req.WaitUntil); err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(types.APIError{
 			Error:      true,
 			ErrorType:  types.ErrNavigationFailed,
@@ -203,7 +211,7 @@ func (h *Handlers) handleSnapshot(c *fiber.Ctx) error {
 
 	// Get snapshot
 	extractor := browser.NewSnapshotExtractor()
-	snapshot, err := extractor.Extract(session.Page, req.Depth)
+	snapshot, err := extractor.Extract(session.Page, req.Depth, req.Focus)
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(types.APIError{
 			Error:       true,
@@ -214,6 +222,15 @@ func (h *Handlers) handleSnapshot(c *fiber.Ctx) error {
 	}
 
 	snapshot.SessionID = id
+
+	// Scan for prompt injection
+	if detected, pattern := h.promptGuard.ScanContent(snapshot.Content); detected {
+		snapshot.Warnings = append(snapshot.Warnings, browser.Warning{
+			Type:     types.WarningPromptInjection,
+			Severity: types.SeverityHigh,
+			Message:  fmt.Sprintf("Suspected prompt injection detected (pattern: %s)", pattern),
+		})
+	}
 
 	// Log audit
 	h.logAudit(id, "snapshot", "", "", types.ReversibilityRead, "success")
@@ -267,8 +284,8 @@ func (h *Handlers) handleAct(c *fiber.Ctx) error {
 			return c.JSON(types.ActionResult{
 				Success:     false,
 				ErrorType:   types.ErrElementNotFound,
-				Message:     err.Errorion:  "(),
-				SuggestRun snapshot to get fresh refs",
+				Message:     err.Error(),
+				Suggestion:  "Run snapshot to get fresh refs",
 				Recoverable: true,
 			})
 		}
@@ -284,6 +301,28 @@ func (h *Handlers) handleAct(c *fiber.Ctx) error {
 		}
 	case types.ActionPress:
 		if err := session.Press(selector, req.Value); err != nil {
+			return c.JSON(types.ActionResult{
+				Success:     false,
+				ErrorType:   types.ErrElementNotFound,
+				Message:     err.Error(),
+				Recoverable: true,
+			})
+		}
+	case types.ActionScroll:
+		y := 500 // default scroll
+		if req.Value != "" {
+			fmt.Sscanf(req.Value, "%d", &y)
+		}
+		if err := session.Scroll(selector, y); err != nil {
+			return c.JSON(types.ActionResult{
+				Success:     false,
+				ErrorType:   types.ErrElementNotFound,
+				Message:     err.Error(),
+				Recoverable: true,
+			})
+		}
+	case types.ActionHover:
+		if err := session.Hover(selector); err != nil {
 			return c.JSON(types.ActionResult{
 				Success:     false,
 				ErrorType:   types.ErrElementNotFound,
@@ -331,11 +370,14 @@ func (h *Handlers) handleStatus(c *fiber.Ctx) error {
 	session.AuthState = authState
 	session.PageState = pageState
 
+	scrollHeight, _ := session.GetScrollHeight()
+
 	return c.JSON(types.StatusResponse{
-		URL:       session.URL,
-		Title:     session.Title,
-		AuthState: authState,
-		PageState: pageState,
+		URL:          session.URL,
+		Title:        session.Title,
+		AuthState:    authState,
+		PageState:    pageState,
+		ScrollHeight: scrollHeight,
 	})
 }
 
@@ -381,6 +423,37 @@ func (h *Handlers) handleScreenshot(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(types.ScreenshotResponse{Path: path})
+}
+
+// handleResize handles window resizing
+func (h *Handlers) handleResize(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	var req struct {
+		Width  int `json:"width"`
+		Height int `json:"height"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	if req.Width <= 0 {
+		req.Width = 1280
+	}
+	if req.Height <= 0 {
+		req.Height = 800
+	}
+
+	session, err := h.sessions.Get(id)
+	if err != nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "session not found"})
+	}
+
+	if err := session.Resize(req.Width, req.Height); err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"success": true, "width": req.Width, "height": req.Height})
 }
 
 // handleWait handles wait
@@ -457,12 +530,12 @@ func (h *Handlers) handleGetCookies(c *fiber.Ctx) error {
 func (h *Handlers) handleSetCookies(c *fiber.Ctx) error {
 	id := c.Params("id")
 
-	_, err := io.ReadAll(c.Body())
-	if err != nil {
+	var cookies []*proto.NetworkCookieParam
+	if err := c.BodyParser(&cookies); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(types.APIError{
 			Error:       true,
 			ErrorType:   types.ErrInvalidAction,
-			Message:     "Invalid request body",
+			Message:     "Invalid request body: " + err.Error(),
 			Recoverable: true,
 		})
 	}
@@ -477,13 +550,21 @@ func (h *Handlers) handleSetCookies(c *fiber.Ctx) error {
 		})
 	}
 
-	_ = session
+	if err := session.SetCookies(cookies); err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(types.APIError{
+			Error:       true,
+			ErrorType:   types.ErrInvalidAction,
+			Message:     err.Error(),
+			Recoverable: true,
+		})
+	}
+
+	h.logAudit(id, "set_cookies", "", "", types.ReversibilityWriteReversible, "success")
+
 	return c.SendStatus(http.StatusNoContent)
 }
 
-// handleAudit handles audit logs
 func (h *Handlers) handleAudit(c *fiber.Ctx) error {
-	sessionID := c.Query("session_id")
 	limit, _ := strconv.Atoi(c.Query("limit", "100"))
 	offset, _ := strconv.Atoi(c.Query("offset", "0"))
 
@@ -491,12 +572,25 @@ func (h *Handlers) handleAudit(c *fiber.Ctx) error {
 		limit = 100
 	}
 
-	_ = sessionID
-	_ = limit
-	_ = offset
+	rawLogs, err := h.db.GetAuditLogs(limit, offset)
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
 
-	// Would retrieve from storage
-	return c.JSON(fiber.Map{"logs": []interface{}{}, "total": 0})
+	var logs []security.AuditEntry
+	for _, raw := range rawLogs {
+		var entry security.AuditEntry
+		if err := json.Unmarshal(raw, &entry); err == nil {
+			logs = append(logs, entry)
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"logs":   logs,
+		"total":  len(logs),
+		"offset": offset,
+		"limit":  limit,
+	})
 }
 
 func (h *Handlers) logAudit(sessionID, action, targetRef, intent, reversibility, result string) {
@@ -508,12 +602,21 @@ func (h *Handlers) logAudit(sessionID, action, targetRef, intent, reversibility,
 		Reversibility: reversibility,
 		Result:        result,
 	}
-	h.auditLogger.LogAction(entry)
+	
+	if err := h.auditLogger.LogAction(entry); err != nil {
+		return
+	}
+
+	data, err := json.Marshal(entry)
+	if err == nil {
+		_ = h.db.AppendAuditLog(data)
+	}
 }
 
 func saveScreenshot(path string, data []byte) error {
-	_ = path
-	_ = data
-	// Simplified - would write to disk
-	return nil
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
 }

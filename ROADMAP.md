@@ -15,10 +15,15 @@ Phase 3: Ecosystem      ░░░░░░░░░░░░░░░░██�
 ---
 
 ## Phase 1: Foundation (v0.1 → v1.0)
-**Goal:** Replace the broken Rust CLI approach with a solid Python HTTP server. Make Axon functional for SuperClaw agents today.
+**Goal:** Consolidate into a zero-overhead pure Go single binary using context pooling and native CDP for maximum efficiency. Make Axon the fastest semantic engine available.
 
 | Feature | Status | Notes |
 |---|---|---|
+| Zero-Overhead Context Pooling | 🔲 Planned | Single daemon + incognito contexts |
+| Native CDP DOM Extraction | 🔲 Planned | Fast, pierces Shadow DOM instantly |
+| Native CDP Full-Page Screenshots | 🔲 Planned | Accurate, non-resizing snapshots |
+| Headless-Native Network Blocking | 🔲 Planned | Drop visual assets for speed |
+| Event-Driven Auto-Waiting | 🔲 Planned | Replace Sleep with CDP events |
 | HTTP Control Server (localhost:8020) | 🔲 Planned | Replace agent-browser daemon |
 | Session management | 🔲 Planned | Named sessions, profile loading |
 | Navigate action | 🔲 Planned | `load` wait mode, not networkidle |
@@ -39,6 +44,7 @@ Phase 3: Ecosystem      ░░░░░░░░░░░░░░░░██�
 
 | Feature | Status | Notes |
 |---|---|---|
+| High-Compression Intent Graphs | 🔲 Planned | Collapse input + button nodes |
 | Element intent classification | 🔲 Planned | Rule-based + embedding |
 | Page state detection | 🔲 Planned | logged_in/captcha/error/etc. |
 | Token-optimized snapshot format | 🔲 Planned | Target 50–500 tokens |
@@ -70,14 +76,13 @@ Phase 3: Ecosystem      ░░░░░░░░░░░░░░░░██�
 
 ---
 
-## Immediate Next Steps (This Week)
+## Immediate Next Steps (The Path to Ultimate Performance)
 
-1. **Build Axon Control Server** — FastAPI server on port 8020 with Session Manager
-2. **Port snapshot logic** — from agent-browser TCP protocol to Playwright native Python
-3. **Implement intent classifier** — start with rule-based, 50 most common patterns
-4. **Write Axon client** — replace `browser_engine.py` with a proper SDK class
-5. **Integration test** — SuperClaw agent posting to X.com end-to-end using Axon
-
+1. **Zero-Overhead Context Pooling** — Refactor `pool.go` to use a single background Chromium daemon and microscopic isolated Incognito contexts (15ms boot, <10MB RAM).
+2. **Native CDP DOM Extraction** — Rip out JS `TreeWalker` in `snapshot.go` and replace with Chromium's native C++ `Accessibility` protocol domain for instant, shadow-DOM piercing extraction.
+3. **High-Compression Intent Graphs** — Upgrade snapshot logic to collapse related elements (e.g., input + search button) into single semantic nodes, slashing token costs.
+4. **Headless-Native Network Blocking** — Add a strict network interceptor in `go-rod` to drop visual assets (fonts, images, trackers) for blazing fast load times.
+5. **Event-Driven Auto-Waiting** — Implement native CDP event listeners (`DOMNodeInserted`, `AnimationCanceled`) to remove flaky `time.Sleep` and wait exactly the right amount of time.
 ---
 
 *Axon Roadmap v0.1 | February 2026*
