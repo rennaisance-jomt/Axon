@@ -694,6 +694,6 @@ Event types:
 <div align="center">
 
 *Axon Project | 2026*  
-*An AI-native browser built with ❤️ for AI agents.*
+*An AI-native browser built with  for AI agents.*
 
 </div>
