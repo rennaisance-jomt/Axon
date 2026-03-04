@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+axon/__init__.py
+axon/client.py
+axon/models.py
+axon_browser.egg-info/PKG-INFO
+axon_browser.egg-info/SOURCES.txt
+axon_browser.egg-info/dependency_links.txt
+axon_browser.egg-info/requires.txt
+axon_browser.egg-info/top_level.txt

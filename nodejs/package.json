@@ -1,6 +1,9 @@
 {
-  "name": "@axon/browser",
+  "name": "@rennissance-jomt/axon-browser",
   "version": "1.0.0",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "description": "Node.js SDK for Axon browser automation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -39,6 +42,3 @@
     "node": ">=18.0.0"
   }
 }
-
-
-
