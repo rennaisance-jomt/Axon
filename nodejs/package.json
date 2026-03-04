@@ -1,5 +1,5 @@
 {
-  "name": "@rennissance-jomt/axon-browser",
+  "name": "@rennaisance-jomt/axon-browser",
   "version": "1.0.0",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
@@ -24,7 +24,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rennissance-jomt/axon"
+    "url": "https://github.com/rennaisance-jomt/axon"
   },
   "dependencies": {
     "undici": "^6.0.0"
