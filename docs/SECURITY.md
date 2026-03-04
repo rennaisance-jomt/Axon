@@ -188,6 +188,6 @@ Each entry is hashed with the previous entry's hash (chain structure):
 <div align="center">
 
 *Axon Project | 2026*  
-*An AI-native browser built with ❤️ for AI agents.*
+*An AI-native browser built with  for AI agents.*
 
 </div>
