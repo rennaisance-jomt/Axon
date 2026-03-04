@@ -190,3 +190,4 @@ func runMCPMode(cfg *config.Config) {
 		os.Exit(1)
 	}
 }
+
