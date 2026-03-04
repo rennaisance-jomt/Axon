@@ -198,7 +198,74 @@ func (sl *SemanticLocator) heal(ax *AXAlignment, result *ResolutionResult) *Reso
 		return healed
 	}
 
+	// T22.3: Strategy 4 - Proximity-based healing using spatial context
+	healed = sl.proximityHeal(ax)
+	if healed != nil {
+		healed.HealedFrom = result.HealedFrom
+		healed.RetryCount = result.RetryCount + 4
+		return healed
+	}
+
 	return result
+}
+
+// proximityHeal uses spatial context (nearby stable elements) to find the element
+func (sl *SemanticLocator) proximityHeal(ax *AXAlignment) *ResolutionResult {
+	ax.mu.RLock()
+	defer ax.mu.RUnlock()
+
+	// Get any anchor we can use as reference
+	var targetAnchor *Anchor
+	for _, a := range sl.Anchors {
+		if a.Type == "text" || a.Type == "role" {
+			targetAnchor = a
+			break
+		}
+	}
+
+	if targetAnchor == nil {
+		return nil
+	}
+
+	// Find elements matching the anchor
+	var candidates []*AlignedElement
+	for _, el := range ax.Elements {
+		if targetAnchor.Type == "text" {
+			if containsIgnoreCase(el.Name, targetAnchor.Value) || 
+			   containsIgnoreCase(el.AXName, targetAnchor.Value) {
+				candidates = append(candidates, el)
+			}
+		} else if targetAnchor.Type == "role" {
+			if el.Role == targetAnchor.Value || el.AXRole == targetAnchor.Value {
+				candidates = append(candidates, el)
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	// Pick the one with highest proximity score (most stable neighbors)
+	var best *AlignedElement
+	var bestScore float64
+	for _, c := range candidates {
+		if c.ProximityScore > bestScore {
+			bestScore = c.ProximityScore
+			best = c
+		}
+	}
+
+	if best != nil && bestScore > 0 {
+		return &ResolutionResult{
+			Element:      best,
+			LocatorUsed:  "proximity:" + sl.buildLocatorString(),
+			Confidence:   0.6, // Reasonable confidence with stable neighbors
+			Alternatives: []string{},
+		}
+	}
+
+	return nil
 }
 
 func (sl *SemanticLocator) fuzzyResolve(ax *AXAlignment) *ResolutionResult {

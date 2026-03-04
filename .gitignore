@@ -109,4 +109,16 @@ config.local.yaml
 # Examples
 /examples/
 
+# Python Environment
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+pip-log.txt
 
+# Node.js Environment
+node_modules/
+npm-debug.log
+yarn-error.log

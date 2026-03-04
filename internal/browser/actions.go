@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/go-rod/rod/lib/proto"
+	"github.com/rennaisance-jomt/axon/pkg/logger"
 )
 
 // WaitOptions represents wait options
@@ -88,11 +89,14 @@ func (s *Session) Hover(selector string) error {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	el.MustWaitVisible().MustWaitStable()
-	return el.Hover()
+	logger.Action("[%s] Hovering over element: %s", s.ID, selector)
+	
+	err = el.Timeout(10 * time.Second).Hover()
+	
+	status := "success"
+	if err != nil { status = "failed" }
+	s.recordAction("hover", selector, "", status, "")
+	return err
 }
 
 // Scroll scrolls an element or page
@@ -107,11 +111,14 @@ func (s *Session) Scroll(selector string, y int) error {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	logger.Action("[%s] Scrolling element: %s (y=%d)", s.ID, selector, y)
 
-	el.MustWaitVisible().MustWaitStable()
-	return el.ScrollIntoView()
+	err = el.Timeout(10 * time.Second).ScrollIntoView()
+
+	status := "success"
+	if err != nil { status = "failed" }
+	s.recordAction("scroll", selector, fmt.Sprintf("%d", y), status, "")
+	return err
 }
 
 // DoubleClick performs a double click
@@ -128,33 +135,35 @@ func (s *Session) DoubleClick(selector string) error {
 	return el.Click(proto.InputMouseButtonLeft, 2)
 }
 
-// RightClick performs a right click (context menu)
 func (s *Session) RightClick(selector string) error {
 	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	logger.Action("[%s] Right-clicking element: %s", s.ID, selector)
 
-	el.MustWaitVisible().MustWaitStable()
-	return el.Click(proto.InputMouseButtonRight, 1)
+	err = el.Timeout(10 * time.Second).Click(proto.InputMouseButtonRight, 1)
+
+	status := "success"
+	if err != nil { status = "failed" }
+	s.recordAction("right-click", selector, "", status, "")
+	return err
 }
 
-// SelectOption selects an option in a dropdown
 func (s *Session) SelectOption(selector string, value string) error {
 	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	logger.Action("[%s] Selecting option '%s' in %s", s.ID, value, selector)
 
-	el.MustWaitVisible().MustWaitStable()
-	// Select by value using JS
-	_, err = el.Eval(fmt.Sprintf(`el => { el.value = "%s"; el.dispatchEvent(new Event('change', { bubbles: true })); }`, value))
+	_, err = el.Timeout(10 * time.Second).Eval(fmt.Sprintf(`el => { el.value = "%s"; el.dispatchEvent(new Event('change', { bubbles: true })); }`, value))
+
+	status := "success"
+	if err != nil { status = "failed" }
+	s.recordAction("select", selector, value, status, "")
 	return err
 }
 
@@ -245,18 +254,20 @@ func (s *Session) GetElementAttribute(selector, attr string) (string, error) {
 	return *val, nil
 }
 
-// Focus focuses an element
 func (s *Session) Focus(selector string) error {
 	el, err := s.resolveSelector(selector)
 	if err != nil {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	logger.Action("[%s] Focusing element: %s", s.ID, selector)
 
-	el.MustWaitVisible().MustWaitStable()
-	return el.Focus()
+	err = el.Timeout(10 * time.Second).Focus()
+
+	status := "success"
+	if err != nil { status = "failed" }
+	s.recordAction("focus", selector, "", status, "")
+	return err
 }
 
 // Blur removes focus from an element
@@ -324,4 +335,93 @@ func (s *Session) GetScrollHeight() (int, error) {
 		return 0, fmt.Errorf("height eval failed: %w", err)
 	}
 	return int(res.Value.Num()), nil
+}
+
+// ExecuteWithRecovery executes an action with automatic retry and rollback on failure
+// This implements Sprint 19: Delta Rollback & Autonomous Recovery
+func (s *Session) ExecuteWithRecovery(actionName string, actionFunc func() error, confirm bool) (*ActionResult, error) {
+	// If no recovery manager, just execute directly
+	if s.RecoveryMgr == nil {
+		err := actionFunc()
+		return &ActionResult{
+			Success:     err == nil,
+			Error:       err,
+			Timestamp:   time.Now(),
+			Description: actionName,
+		}, err
+	}
+
+	recoveryMgr := s.RecoveryMgr
+	maxRetries := recoveryMgr.config.MaxRetriesPerAction
+
+	// Create checkpoint before action if it's irreversible and rollback is enabled
+	if confirm && recoveryMgr.config.EnableAutoRollback {
+		if checkpoint, err := recoveryMgr.CreatePreActionCheckpoint(s, actionName); err == nil {
+			// Checkpoint created successfully
+			_ = checkpoint
+		} else {
+			// Log but continue - checkpoint failure shouldn't block action
+			fmt.Printf("Warning: Failed to create pre-action checkpoint: %v\n", err)
+		}
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Execute the action
+		err := actionFunc()
+
+		// Record the result
+		failureType := recoveryMgr.DetectFailureType(err)
+		result := &ActionResult{
+			Success:      err == nil,
+			Error:        err,
+			FailureType:  failureType,
+			RetriesUsed:  attempt,
+			Timestamp:    time.Now(),
+			Description:  actionName,
+		}
+		recoveryMgr.RecordAction(s.ID, result)
+
+		if err == nil {
+			return result, nil
+		}
+
+		// Action failed - check if we should retry
+		if !recoveryMgr.IsRetryable(failureType) {
+			// Non-retryable failure - return immediately with suggestion
+			return result, fmt.Errorf("%s: %w (Suggestion: %s)",
+				failureType, err,
+				recoveryMgr.SuggestAlternativePath(actionName, failureType))
+		}
+
+		// Check if we've exceeded max retries
+		if attempt >= maxRetries {
+			// Try rollback if enabled
+			if shouldRollback, cp := recoveryMgr.ShouldRollback(s.ID); shouldRollback && cp != nil {
+				err = recoveryMgr.RollbackToCheckpoint(s, cp)
+				if err != nil {
+					return result, fmt.Errorf("max retries exceeded and rollback failed: %w", err)
+				}
+				return result, fmt.Errorf("max retries exceeded, rolled back to checkpoint: %w", err)
+			}
+			return result, fmt.Errorf("max retries (%d) exceeded: %w (Suggestion: %s)",
+				maxRetries, err,
+				recoveryMgr.SuggestAlternativePath(actionName, failureType))
+		}
+
+		// Calculate backoff and wait
+		backoff := recoveryMgr.CalculateBackoff(attempt)
+		fmt.Printf("Retry %d/%d after %v (failure: %s)\n", attempt+1, maxRetries, backoff, failureType)
+		time.Sleep(backoff)
+
+		lastErr = err
+	}
+
+	return &ActionResult{
+		Success:     false,
+		Error:       lastErr,
+		RetriesUsed: maxRetries,
+		Timestamp:   time.Now(),
+		Description: actionName,
+	}, lastErr
 }

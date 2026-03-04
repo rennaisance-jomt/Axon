@@ -36,33 +36,45 @@ Axon is fundamentally more efficient than standard browser automation. We have v
 
 | Metric | Axon Performance | Standard Headless | Result |
 | :--- | :--- | :--- | :--- |
-| **Token Usage** | **~150 tokens** | ~8,000+ tokens | **96.5% Reduction** |
+| **Token Usage** | **~100 tokens** | ~8,000+ tokens | **98% Reduction** |
 | **Page Latency** | **1.2s** | 2.7s | **55.5% Faster** |
 | **Boot Time** | **~15ms** | ~800ms | **Sub-50ms Sessions** |
 | **Memory Footprint** | **~10MB** | ~200MB+ | **Massive Density** |
 
-> *Benchmarks verified on Wikipedia and CNN.com (February 2026).*
+> *Benchmarks verified on Wikipedia and CNN.com (March 2026).*
 
 ---
 
 ## Architecture
 
-Axon is built in pure **Go** with a unique 5-layer modular architecture:
+Axon is built in pure **Go** with a unique modular architecture designed for agents:
 
 ```mermaid
 graph TD
-    A[<b>Layer 5: Agent Interface</b><br/>REST API / Python SDK / LangChain] --> B
+    V[<b>Layer 6: Visual Debugger</b><br/>Real-time Perception Overlay] --> A
+    A[<b>Layer 5: Agent Interface</b><br/>REST API / MCP / Python / Node.js] --> B
     B[<b>Layer 4: Axon Intelligence</b><br/>Semantic Graphs / Intent Classifier] --> C
     C[<b>Layer 3: Axon Security</b><br/>SSRF Guard / Action Classifier] --> D
     D[<b>Layer 2: Control Server</b><br/>Session Pool / State Management] --> E
     E[<b>Layer 1: Browser Runtime</b><br/>Optimized Chromium / Go-Rod]
     
+    style V fill:#333333,stroke:#ffffff,stroke-width:2px,color:#ffffff
     style A fill:#333333,stroke:#ffffff,stroke-width:2px,color:#ffffff
     style B fill:#333333,stroke:#ffffff,stroke-width:2px,color:#ffffff
     style C fill:#333333,stroke:#ffffff,stroke-width:2px,color:#ffffff
     style D fill:#333333,stroke:#ffffff,stroke-width:2px,color:#ffffff
     style E fill:#333333,stroke:#ffffff,stroke-width:2px,color:#ffffff
 ```
+
+---
+
+## The Axon Ecosystem
+
+Axon provides a complete toolkit to bring production-grade browser capabilities to your agents:
+- **Python & Node.js SDKs**: Full-featured client libraries for rapid integration.
+- **Model Context Protocol (MCP)**: Use Axon natively as a server with Claude Desktop or MCP clients.
+- **Vision Debugger API**: A 60fps WebSocket overlay that lets you *watch* what your agent is thinking.
+- **Axon CLI**: Manage sessions and interact with the browser directly from the terminal.
 
 ---
 

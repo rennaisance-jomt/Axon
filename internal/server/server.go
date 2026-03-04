@@ -10,10 +10,12 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/gofiber/websocket/v2"
 	"github.com/rennaisance-jomt/axon/internal/browser"
 	"github.com/rennaisance-jomt/axon/internal/config"
 	"github.com/rennaisance-jomt/axon/internal/middleware"
 	"github.com/rennaisance-jomt/axon/internal/storage"
+	"github.com/rennaisance-jomt/axon/internal/telemetry"
 	"github.com/rennaisance-jomt/axon/pkg/logger"
 )
 
@@ -39,8 +41,26 @@ func New(cfg *config.Config) *Server {
 }
 
 // Start starts the HTTP server
-func (s *Server) Start() error {
+func (s *Server) Start() (err error) {
+	defer func() {
+		if err != nil {
+			logger.Warn("Server start failed, cleaning up...")
+			_ = s.Stop()
+		}
+	}()
+
 	logger.Banner()
+
+	// Initialize telemetry if enabled
+	if s.cfg.Telemetry.Enabled {
+		logger.System("Initializing telemetry: %s", s.cfg.Telemetry.Provider)
+		if err := telemetry.Init(&s.cfg.Telemetry); err != nil {
+			logger.Warn("Telemetry initialization failed: %v", err)
+		} else {
+			logger.Success("Telemetry enabled: %s", s.cfg.Telemetry.Provider)
+		}
+	}
+
 	// Initialize browser pool
 	logger.System("Initializing browser pool (PoolSize: %d)", s.cfg.Browser.PoolSize)
 	pool, err := browser.NewPool(&s.cfg.Browser)
@@ -73,6 +93,7 @@ func (s *Server) Start() error {
 	s.app = fiber.New(fiber.Config{
 		ReadTimeout:           s.cfg.Server.ReadTimeout,
 		WriteTimeout:          s.cfg.Server.WriteTimeout,
+		BodyLimit:             10 * 1024 * 1024, // 10MB for large snapshots
 		AppName:               "Axon",
 		DisableStartupMessage: true,
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
@@ -101,13 +122,22 @@ func (s *Server) Start() error {
 
 // Stop gracefully stops the server
 func (s *Server) Stop() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Shutdown telemetry
+	telemetry.Shutdown()
+
 	if s.pool != nil {
 		s.pool.Close()
+		s.pool = nil
 	}
 	if s.app != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		return s.app.ShutdownWithContext(ctx)
+		err := s.app.ShutdownWithContext(ctx)
+		s.app = nil
+		return err
 	}
 	return nil
 }
@@ -147,8 +177,24 @@ func (s *Server) setupRoutes() {
 	sessions.Get("/:id/cookies", s.handlers.handleGetCookies)
 	sessions.Post("/:id/cookies", s.handlers.handleSetCookies)
 	
+	// Telemetry bridging
+	sessions.Post("/:id/telemetry/llm", s.handlers.handleLLMTelemetry)
+	
+	// Sprint 27: Vision Overlay API (WebSocket Stream)
+	sessions.Get("/:id/stream", websocket.New(s.handlers.handleStream))
+	sessions.Get("/:id/replay", s.handlers.handleReplay)
+
 	// Phase 2: Intent-based resolution
 	sessions.Post("/:id/find_and_act", s.handlers.handleFindAndAct)
+
+	// Agent integration (Backend LLM call)
+	api.Post("/agent/chat", s.handlers.handleAgentChat)
+
+	// Tabs (Multi-tasking)
+	sessions.Get("/:id/tabs", s.handlers.handleListTabs)
+	sessions.Post("/:id/tabs", s.handlers.handleCreateTab)
+	sessions.Post("/:id/tabs/:target_id/activate", s.handlers.handleActivateTab)
+	sessions.Delete("/:id/tabs/:target_id", s.handlers.handleCloseTab)
 
 	// Audit
 	api.Get("/audit", s.handlers.handleAudit)

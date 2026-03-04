@@ -24,6 +24,12 @@ type Element struct {
 	Reversible      string              `json:"reversible"`
 	Visible         bool                `json:"visible"`
 	Enabled         bool                `json:"enabled"`
+	X               float64             `json:"x,omitempty"`
+	Y               float64             `json:"y,omitempty"`
+	Width           float64             `json:"width,omitempty"`
+	Height          float64             `json:"height,omitempty"`
+	HRef            string              `json:"href,omitempty"`
+	Value           string              `json:"value,omitempty"`
 	BackendNodeID   proto.DOMBackendNodeID `json:"-"` // Internal: BackendDOMNodeID for element actions
 }
 
@@ -157,6 +163,8 @@ func (se *SnapshotExtractor) extractElements(page *rod.Page, selector string) ([
 			
 			disabled := false
 			var placeholder string
+			var href string
+			var value string
 			
 			for _, prop := range node.Properties {
 				if prop.Name == proto.AccessibilityAXPropertyNameDisabled && !prop.Value.Value.Nil() {
@@ -164,6 +172,12 @@ func (se *SnapshotExtractor) extractElements(page *rod.Page, selector string) ([
 				}
 				if string(prop.Name) == "placeholder" && !prop.Value.Value.Nil() {
 					placeholder = prop.Value.Value.String()
+				}
+				if prop.Name == "value" && !prop.Value.Value.Nil() {
+					value = prop.Value.Value.String()
+				}
+				if prop.Name == proto.AccessibilityAXPropertyNameURL && !prop.Value.Value.Nil() {
+					href = prop.Value.Value.String()
 				}
 			}
 			
@@ -187,6 +201,17 @@ func (se *SnapshotExtractor) extractElements(page *rod.Page, selector string) ([
 				name = name[:100]
 			}
 
+			var x, y, width, height float64
+			// Node bounds have been removed from proto in this rod version
+			/*
+			if node.Bounds != nil {
+				x = node.Bounds.X
+				y = node.Bounds.Y
+				width = node.Bounds.Width
+				height = node.Bounds.Height
+			}
+			*/
+
 			elements = append(elements, Element{
 				Ref:         ref,
 				Type:        elementType,
@@ -195,6 +220,12 @@ func (se *SnapshotExtractor) extractElements(page *rod.Page, selector string) ([
 				Role:        role,
 				Visible:     true, // Accessibility nodes exposed in this tree are generally visible
 				Enabled:     !disabled,
+				X:           x,
+				Y:           y,
+				Width:       width,
+				Height:      height,
+				HRef:        href,
+				Value:       value,
 				BackendNodeID: node.BackendDOMNodeID, // Store for element actions
 			})
 			
@@ -274,12 +305,25 @@ func (se *SnapshotExtractor) generateContent(snapshot *Snapshot, depth string) s
 			sb.WriteString("\n")
 		}
 
-		if len(links) > 0 && depth == "full" {
-			sb.WriteString("LINKS:\n")
-			for _, el := range links {
-				sb.WriteString(fmt.Sprintf("  [%s] %s\n", el.Ref, el.Label))
-			}
+	if len(links) > 0 {
+		sb.WriteString("LINKS:\n")
+		// Limit to 40 links for compact/standard to avoid token bloat
+		maxLinks := len(links)
+		if depth != "full" && maxLinks > 40 {
+			maxLinks = 40
 		}
+		for i := 0; i < maxLinks; i++ {
+			el := links[i]
+			sb.WriteString(fmt.Sprintf("  [%s] %s", el.Ref, el.Label))
+			if el.HRef != "" {
+				sb.WriteString(fmt.Sprintf(" — %s", el.HRef))
+			}
+			sb.WriteString("\n")
+		}
+		if len(links) > maxLinks {
+			sb.WriteString(fmt.Sprintf("  ... and %d more links (use depth=full to see all)\n", len(links)-maxLinks))
+		}
+	}
 	}
 
 	return sb.String()

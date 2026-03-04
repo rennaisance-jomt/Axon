@@ -3,12 +3,12 @@
 server:
   host: "0.0.0.0"
   port: 8020
-  read_timeout: "30s"
-  write_timeout: "30s"
+  read_timeout: "120s"
+  write_timeout: "120s"
 
 browser:
   headless: true
-  binary_path: "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+  binary_path: 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
   pool_size: 2
   launch_options:
     args:
@@ -36,11 +36,19 @@ security:
     escalate_on_budget_exceeded: true
 
 storage:
-  path: "./data/axon.db"
+  path: "./data/axon2.db"
   session_ttl: "24h"
   audit_retention: "90d"
 
 logging:
-  level: "info"
-  format: "json"
+  level: "debug"
+  format: "text"
   output: "stdout"
+
+telemetry:
+  enabled: true
+  provider: "langfuse"
+  endpoint: "https://cloud.langfuse.com"
+  public_key: "pk-lf-f2af1c5f-6e23-4137-9f72-30c9a0d98b08"
+  secret_key: "sk-lf-ae3ebb63-020c-4d96-a66c-22b12d04d616"
+  environment: "production"

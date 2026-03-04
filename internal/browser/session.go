@@ -9,9 +9,20 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/input"
 	"github.com/go-rod/rod/lib/proto"
 	"github.com/rennaisance-jomt/axon/pkg/logger"
 )
+
+// ActionRecord represents a recorded browser action
+type ActionRecord struct {
+	Type      string    `json:"type"`
+	Ref       string    `json:"ref"`
+	Value     string    `json:"value,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+	Status    string    `json:"status"` // success, failed, pending
+	Error     string    `json:"error,omitempty"`
+}
 
 // generateSessionID generates a unique session ID
 func generateSessionID() string {
@@ -37,6 +48,12 @@ type Session struct {
 	Page          *rod.Page             `json:"-"`
 	KnownElements map[string]string     `json:"known_elements,omitempty"` // Map intent to selector
 	LastElements  []Element              `json:"-"` // Last snapshot elements for action lookup
+	RecoveryMgr   *RecoveryManager       `json:"-"` // Sprint 19: Autonomous recovery manager
+	// Lifecycle monitoring
+	LifecycleMonitor *LifecycleMonitor    `json:"-"` // Page lifecycle events
+	TabManager     *TabManager          `json:"-"` // Multi-tab management
+	Streamer       *Streamer            `json:"-"` // Sprint 27: Physical screencast streamer
+	ActionHistory  []ActionRecord       `json:"action_history,omitempty"` // Sprint 27.3: Path visualization
 	mu            sync.RWMutex
 }
 
@@ -53,6 +70,28 @@ func (s *Session) resolveSelector(selector string) (*rod.Element, error) {
 	return s.Page.Timeout(5 * time.Second).Element(selector)
 }
 
+// recordAction records an action in the history
+func (s *Session) recordAction(actionType, ref, value, status, errStr string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record := ActionRecord{
+		Type:      actionType,
+		Ref:       ref,
+		Value:     value,
+		Timestamp: time.Now(),
+		Status:    status,
+		Error:     errStr,
+	}
+
+	s.ActionHistory = append(s.ActionHistory, record)
+
+	// Keep only last 10 actions for overlay
+	if len(s.ActionHistory) > 10 {
+		s.ActionHistory = s.ActionHistory[len(s.ActionHistory)-10:]
+	}
+}
+
 // getElementFromRef finds an element by its semantic reference
 func (s *Session) getElementFromRef(ref string) (*rod.Element, error) {
 	s.mu.RLock()
@@ -66,59 +105,66 @@ func (s *Session) getElementFromRef(ref string) (*rod.Element, error) {
 	s.mu.RUnlock()
 
 	if targetEl.Ref == "" {
-		return nil, fmt.Errorf("element not found: ref %s not in last snapshot. Run snapshot first.", ref)
+		return nil, fmt.Errorf("element not found: ref %s not in last snapshot", ref)
 	}
 
-	// 1. Try resolving via BackendNodeID (Most Robust)
-	if targetEl.BackendNodeID > 0 {
-		
-		// Map BackendNodeID to rod.Element
-		node := &proto.DOMNode{
-			BackendNodeID: targetEl.BackendNodeID,
-		}
-		
-		el, err := s.Page.ElementFromNode(node)
-		if err == nil && el != nil {
-			return el, nil
-		}
-		logger.Warn("[%s] BackendNodeID resolution failed for ref %s: %v. Falling back to semantic search.", s.ID, ref, err)
-	}
+	logger.Info("[%s] Resolving ref %s: label='%s', role='%s'", s.ID, ref, targetEl.Label, targetEl.Role)
 
-	// 2. Fallback to Semantic Search (Text/Label)
-	logger.Info("[%s] Performing semantic search for ref %s: label=%s", s.ID, ref, targetEl.Label)
-
-	// JS-based search for various interactive elements matching the label
+	// Sprint 27.6: Prioritize robust JS-based search. BackendNodeID resolution (ElementFromNode) 
+	// can sometimes cause CDP congestion or hangs on Windows in headless mode. 
 	js := fmt.Sprintf(`
 		(function() {
-			var label = '%s';
-			var elements = document.querySelectorAll('button, [role="button"], a, input, textarea, select, [role="link"], [role="textbox"]');
+			var label = %s;
+			var role = %s;
+			var elements = document.querySelectorAll('button, [role="button"], a, input, textarea, select, [role="link"], [role="textbox"], [role="searchbox"]');
+			
+			// 1. Exact match pass
 			for (var i = 0; i < elements.length; i++) {
 				var el = elements[i];
-				var text = (el.textContent || el.innerText || "").trim();
-				var ariaLabel = (el.getAttribute("aria-label") || "").trim();
-				var title = (el.getAttribute("title") || "").trim();
-				var placeholder = (el.getAttribute("placeholder") || "").trim();
-				var value = (el.value || "").trim();
+				var text = (el.textContent || el.innerText || "").trim().toLowerCase();
+				var aria = (el.getAttribute("aria-label") || "").trim().toLowerCase();
+				var plac = (el.getAttribute("placeholder") || "").trim().toLowerCase();
+				var val = (el.value || "").trim().toLowerCase();
+				var l = label.toLowerCase();
 
-				if (text.toLowerCase() === label.toLowerCase() ||
-				    ariaLabel.toLowerCase() === label.toLowerCase() ||
-				    title.toLowerCase() === label.toLowerCase() ||
-				    placeholder.toLowerCase() === label.toLowerCase() ||
-				    (el.type === "submit" && value.toLowerCase() === label.toLowerCase())) {
-					return el;
-				}
-				
-				// Partial match as secondary fallback
-				if (text.toLowerCase().includes(label.toLowerCase()) && label.length > 3) {
+				if (text === l || aria === l || plac === l || val === l) {
 					return el;
 				}
 			}
+			
+			// 2. Partial match fallback (only for reasonably long labels)
+			if (label.length > 3) {
+				for (var i = 0; i < elements.length; i++) {
+					var el = elements[i];
+					var text = (el.textContent || "").toLowerCase();
+					if (text.includes(label.toLowerCase())) return el;
+				}
+			}
 			return null;
-		})();
-	`, targetEl.Label)
+		})()
+	`, jsonQuote(targetEl.Label), jsonQuote(targetEl.Role))
 
-	// Using rod's built-in support for resolving elements from JS
-	return s.Page.ElementByJS(rod.Eval(js))
+	el, err := s.Page.Timeout(5 * time.Second).ElementByJS(rod.Eval(js))
+	if err == nil && el != nil {
+		return el, nil
+	}
+
+	// 3. Last resort: Try BackendNodeID if JS search failed
+	if targetEl.BackendNodeID > 0 {
+		logger.Warn("[%s] Semantic search failed for %s, trying BackendNodeID workaround", s.ID, ref)
+		node := &proto.DOMNode{BackendNodeID: targetEl.BackendNodeID}
+		el, err := s.Page.Timeout(3 * time.Second).ElementFromNode(node)
+		if err == nil && el != nil {
+			return el, nil
+		}
+	}
+
+	return nil, fmt.Errorf("could not resolve ref %s effectively", ref)
+}
+
+func jsonQuote(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }
 
 // SessionManager manages multiple browser sessions
@@ -128,6 +174,7 @@ type SessionManager struct {
 	pool          *Pool
 	maxSessionLife time.Duration
 	lifecycleCh   chan string // channel for lifecycle events
+	checkpointMgr *CheckpointManager // Sprint 18 & 19: For checkpoints and recovery
 }
 
 // NewSessionManager creates a new session manager
@@ -141,6 +188,13 @@ func NewSessionManager(pool *Pool, maxSessionLife time.Duration) *SessionManager
 		maxSessionLife: maxSessionLife,
 		lifecycleCh:   make(chan string, 100),
 	}
+}
+
+// NewSessionManagerWithRecovery creates a new session manager with checkpoint and recovery support
+func NewSessionManagerWithRecovery(pool *Pool, maxSessionLife time.Duration, checkpointMgr *CheckpointManager) *SessionManager {
+	sm := NewSessionManager(pool, maxSessionLife)
+	sm.checkpointMgr = checkpointMgr
+	return sm
 }
 
 // Create creates a new session
@@ -157,28 +211,20 @@ func (sm *SessionManager) Create(id string, profile string) (*Session, error) {
 		return nil, fmt.Errorf("session %s already exists", id)
 	}
 
-	// Acquire worker from pool
-	worker, err := sm.pool.Acquire()
+	// Acquire context from pool
+	browserCtx, err := sm.pool.Acquire()
 	if err != nil {
-		return nil, fmt.Errorf("failed to acquire worker: %w", err)
+		return nil, fmt.Errorf("failed to acquire context: %w", err)
 	}
 
-	// Create browser context using the worker's browser
-	worker.mu.RLock()
-	browser := worker.Browser
-	worker.mu.RUnlock()
-
-	// Create incognito browser (acts as a context)
-	incognito, err := browser.Incognito()
-	if err != nil {
-		sm.pool.Release(worker)
-		return nil, fmt.Errorf("failed to create incognito: %w", err)
-	}
+	// Use the context's browser for incognito operations
+	// Note: browserCtx.Context is already an incognito context
+	ctx := browserCtx.Context
 
 	// Create new page
-	page, err := incognito.Page(proto.TargetCreateTarget{})
+	page, err := ctx.Page(proto.TargetCreateTarget{})
 	if err != nil {
-		sm.pool.Release(worker)
+		sm.pool.Release(browserCtx)
 		return nil, fmt.Errorf("failed to create page: %w", err)
 	}
 
@@ -218,13 +264,29 @@ func (sm *SessionManager) Create(id string, profile string) (*Session, error) {
 		Profile:       profile,
 		CreatedAt:     time.Now(),
 		LastAction:    time.Now(),
-		WorkerID:      worker.ID,
-		Context:       incognito,
-		Browser:       browser,
+		WorkerID:      browserCtx.ID,
+		Context:       ctx,
+		Browser:       ctx, // Context is the incognito browser
 		Page:          page,
 		KnownElements: make(map[string]string),
 		LastElements:  make([]Element, 0),
 	}
+
+	// Sprint 18 & 19: Initialize recovery manager if checkpoint manager exists
+	if sm.checkpointMgr != nil {
+		recoveryConfig := DefaultRecoveryConfig()
+		session.RecoveryMgr = NewRecoveryManager(recoveryConfig, sm.checkpointMgr)
+	}
+
+	// Sprint 21: Initialize lifecycle monitor for page events
+	session.LifecycleMonitor = NewLifecycleMonitor(page)
+
+	// Sprint 21: Initialize tab manager for multi-tab support
+	session.TabManager = NewTabManager(ctx)
+
+	// Sprint 27: Initialize visual streamer
+	session.Streamer = NewStreamer(page, id)
+	session.Streamer.SetMetadataFunc(session.GetElementCoordinates)
 
 	// If profile is provided, import cookies
 	if profile != "" {
@@ -291,11 +353,11 @@ func (sm *SessionManager) Delete(id string) error {
 		session.Context.Close()
 	}
 
-	// Release worker back to pool
+	// Release context back to pool
 	if session.WorkerID != "" {
-		worker, err := sm.pool.GetWorker(session.WorkerID)
+		browserCtx, err := sm.pool.GetContext(session.WorkerID)
 		if err == nil {
-			sm.pool.Release(worker)
+			sm.pool.Release(browserCtx)
 		}
 	}
 
@@ -322,11 +384,19 @@ func (sm *SessionManager) Update(session *Session) {
 
 // Navigate navigates to a URL with optional wait condition
 func (s *Session) Navigate(url string, waitUntil string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if err := s.Page.Navigate(url); err != nil {
-		return fmt.Errorf("navigation failed: %w", err)
+	// If wait_until is "none", use a non-blocking JS jump to avoid rod hangs
+	if waitUntil == "none" {
+		_, err := s.Page.Eval(fmt.Sprintf("window.location.href = '%s'", url))
+		if err != nil {
+			// Fallback to standard if JS fails
+			if err := s.Page.Navigate(url); err != nil {
+				return fmt.Errorf("navigation fallback failed: %w", err)
+			}
+		}
+	} else {
+		if err := s.Page.Navigate(url); err != nil {
+			return fmt.Errorf("navigation failed: %w", err)
+		}
 	}
 
 	// Wait based on condition
@@ -359,28 +429,46 @@ func (s *Session) Navigate(url string, waitUntil string) error {
 	case "domcontentloaded":
 		wait := s.Page.WaitEvent(&proto.PageDomContentEventFired{})
 		wait()
+	case "none":
+		// Return immediately
 	default:
-		// Default to load
-		if err := s.Page.WaitLoad(); err != nil {
-			return fmt.Errorf("wait load failed: %w", err)
+		// Default to load with timeout
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- s.Page.WaitLoad()
+		}()
+		
+		select {
+		case err := <-errCh:
+			if err != nil {
+				return fmt.Errorf("wait load failed: %w", err)
+			}
+		case <-time.After(15 * time.Second):
+			logger.Warn("[%s] WaitLoad timed out, continuing anyway", s.ID)
 		}
 	}
 
 	// Update metadata
+	s.mu.Lock()
 	s.URL = url
 	s.Status = "active"
+	s.mu.Unlock()
 
 	// Get title with retry
 	for i := 0; i < 5; i++ {
 		if res, err := s.Page.Eval("document.title"); err == nil {
 			title := res.Value.String()
 			if title != "" {
+				s.mu.Lock()
 				s.Title = title
+				s.mu.Unlock()
 				break
 			}
 		}
-		time.Sleep(500 * time.Millisecond)
 	}
+	// Record navigation
+	s.recordAction("navigate", url, "", "success", "")
+	logger.Success("[%s] Navigation to %s completed", s.ID, url)
 
 	return nil
 }
@@ -439,13 +527,26 @@ func (s *Session) Click(selector string) error {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	logger.Action("[%s] Clicking element: %s", s.ID, selector)
-	element.MustWaitVisible()
-	element.MustWaitStable()
-	return element.Click(proto.InputMouseButtonLeft, 1)
+	
+	// Sprint 27.5: Perform browser interaction OUTSIDE of the session lock to prevent deadlocks
+	// and server-wide hangs during slow page responses.
+	// We use the direct rod.Element.Timeout() pattern.
+	err = element.Timeout(15 * time.Second).Click(proto.InputMouseButtonLeft, 1)
+	
+	status := "success"
+	errStr := ""
+	if err != nil {
+		status = "failed"
+		errStr = err.Error()
+	}
+
+	s.mu.Lock()
+	s.LastAction = time.Now()
+	s.mu.Unlock()
+
+	s.recordAction("click", selector, "", status, errStr)
+	return err
 }
 
 
@@ -456,13 +557,24 @@ func (s *Session) Fill(selector string, value string) error {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	logger.Action("[%s] Filling element %s with value", s.ID, selector)
-	element.MustWaitVisible()
-	element.MustWaitStable()
-	return element.Input(value)
+	
+	// Sprint 27.6: Use Input for standard rod.Element behavior.
+	err = element.Timeout(5 * time.Second).Input(value)
+
+	status := "success"
+	errStr := ""
+	if err != nil {
+		status = "failed"
+		errStr = err.Error()
+	}
+
+	s.mu.Lock()
+	s.LastAction = time.Now()
+	s.mu.Unlock()
+
+	s.recordAction("fill", selector, value, status, errStr)
+	return err
 }
 
 // SetLastElements stores the elements from the last snapshot
@@ -479,6 +591,56 @@ func (s *Session) GetLastElements() []Element {
 	return s.LastElements
 }
 
+// GetElementCoordinates returns the viewport coordinates for all elements in the last snapshot
+func (s *Session) GetElementCoordinates() map[string]interface{} {
+	s.mu.RLock()
+	elements := s.LastElements
+	s.mu.RUnlock()
+
+	result := make(map[string]interface{})
+	var coords []map[string]interface{}
+
+	for _, el := range elements {
+		if el.BackendNodeID == 0 {
+			continue
+		}
+
+		// Get box model
+		box, err := proto.DOMGetBoxModel{
+			BackendNodeID: el.BackendNodeID,
+		}.Call(s.Page)
+
+		if err == nil && box != nil {
+			// Use the border box as the element's hit area
+			// box.Border is [x1, y1, x2, y2, x3, y3, x4, y4]
+			if len(box.Model.Border) >= 8 {
+				x := box.Model.Border[0]
+				y := box.Model.Border[1]
+				width := box.Model.Border[2] - box.Model.Border[0]
+				height := box.Model.Border[5] - box.Model.Border[1]
+
+				coords = append(coords, map[string]interface{}{
+					"ref":    el.Ref,
+					"label":  el.Label,
+					"type":   el.Type,
+					"x":      x,
+					"y":      y,
+					"width":  width,
+					"height": height,
+				})
+			}
+		}
+	}
+
+	result["elements"] = coords
+	result["url"] = s.URL
+	result["title"] = s.Title
+	s.mu.RLock()
+	result["action_history"] = s.ActionHistory
+	s.mu.RUnlock()
+	return result
+}
+
 // Press presses a key
 func (s *Session) Press(selector string, key string) error {
 	element, err := s.resolveSelector(selector)
@@ -486,11 +648,35 @@ func (s *Session) Press(selector string, key string) error {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	logger.Action("[%s] Pressing key %s on element %s", s.ID, key, selector)
+	
+	switch strings.ToLower(key) {
+	case "enter":
+		err = element.Timeout(10 * time.Second).Type(input.Enter)
+	case "escape", "esc":
+		err = element.Timeout(10 * time.Second).Type(input.Escape)
+	case "tab":
+		err = element.Timeout(10 * time.Second).Type(input.Tab)
+	case "backspace":
+		err = element.Timeout(10 * time.Second).Type(input.Backspace)
+	default:
+		// Fallback to literal input if not a control key
+		err = element.Timeout(10 * time.Second).Input(key)
+	}
 
-	element.MustWaitVisible().MustWaitStable()
-	return element.Input(key)
+	status := "success"
+	errStr := ""
+	if err != nil {
+		status = "failed"
+		errStr = err.Error()
+	}
+
+	s.mu.Lock()
+	s.LastAction = time.Now()
+	s.mu.Unlock()
+
+	s.recordAction("press", selector, key, status, errStr)
+	return err
 }
 
 // Screenshot takes a screenshot
@@ -552,11 +738,11 @@ func (sm *SessionManager) monitorSession(session *Session) {
 				return
 			}
 
-			// Check if worker is still healthy
+			// Check if context is still healthy
 			if s.WorkerID != "" {
-				worker, err := sm.pool.GetWorker(s.WorkerID)
-				if err != nil || worker.Status != WorkerStatusHealthy {
-					logger.Error("Session %s worker %s is unhealthy, recreating session", session.ID, s.WorkerID)
+				ctx, err := sm.pool.GetContext(s.WorkerID)
+				if err != nil || ctx.Status != ContextStatusHealthy {
+					logger.Error("Session %s context %s is unhealthy, recreating session", session.ID, s.WorkerID)
 					// Trigger session recreation
 					sm.recreateSession(session)
 					return
@@ -604,31 +790,21 @@ func (sm *SessionManager) CloseSession(id string) error {
 func (sm *SessionManager) recreateSession(oldSession *Session) {
 	oldWorkerID := oldSession.WorkerID
 
-	// Get worker
-	worker, err := sm.pool.Acquire()
+	// Acquire new context from pool (already incognito)
+	browserCtx, err := sm.pool.Acquire()
 	if err != nil {
-		logger.Error("Failed to acquire new worker for session %s: %v", oldSession.ID, err)
+		logger.Error("Failed to acquire new context for session %s: %v", oldSession.ID, err)
 		sm.CloseSession(oldSession.ID)
 		return
 	}
 
-	// Create new browser context
-	worker.mu.RLock()
-	browser := worker.Browser
-	worker.mu.RUnlock()
+	// Use the context directly (already incognito)
+	ctx := browserCtx.Context
 
-	incognito, err := browser.Incognito()
-	if err != nil {
-		logger.Error("Failed to create incognito for session %s: %v", oldSession.ID, err)
-		sm.pool.Release(worker)
-		sm.CloseSession(oldSession.ID)
-		return
-	}
-
-	page, err := incognito.Page(proto.TargetCreateTarget{})
+	page, err := ctx.Page(proto.TargetCreateTarget{})
 	if err != nil {
 		logger.Error("Failed to create page for session %s: %v", oldSession.ID, err)
-		sm.pool.Release(worker)
+		sm.pool.Release(browserCtx)
 		sm.CloseSession(oldSession.ID)
 		return
 	}
@@ -671,19 +847,19 @@ func (sm *SessionManager) recreateSession(oldSession *Session) {
 			oldSession.Context.Close()
 		}
 
-		// Release old worker
+		// Release old context
 		if oldWorkerID != "" {
-			if oldWorker, err := sm.pool.GetWorker(oldWorkerID); err == nil {
-				sm.pool.Release(oldWorker)
+			if oldCtx, err := sm.pool.GetContext(oldWorkerID); err == nil {
+				sm.pool.Release(oldCtx)
 			}
 		}
 
 		// Update with new resources
-		session.WorkerID = worker.ID
-		session.Context = incognito
-		session.Browser = browser
+		session.WorkerID = browserCtx.ID
+		session.Context = ctx
+		session.Browser = ctx
 		session.Page = page
-		logger.Success("Session %s migrated to worker %s", oldSession.ID, worker.ID)
+		logger.Success("Session %s migrated to context %s", oldSession.ID, browserCtx.ID)
 	}
 	sm.mu.Unlock()
 }

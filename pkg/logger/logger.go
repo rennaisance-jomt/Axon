@@ -4,11 +4,15 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"os"
 	"strings"
 	"time"
 	"github.com/mattn/go-colorable"
 )
+
+// Debug logs a debug message
+func Debug(format string, v ...interface{}) {
+	defaultLogger.logFormat(LevelDebug, Gray, format, v...)
+}
 
 // Log levels
 const (
@@ -18,6 +22,7 @@ const (
 	LevelError   = "ERROR"
 	LevelAction  = "ACTION"
 	LevelSystem  = "SYSTEM"
+	LevelDebug   = "DEBUG"
 )
 
 // Colors

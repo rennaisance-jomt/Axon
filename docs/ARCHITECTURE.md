@@ -11,15 +11,17 @@ Axon is structured as **five cooperating layers**, each responsible for a distin
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  Layer 5: Agent Interface (Tool API)                │  ← What agents call
+│  Layer 6: Visual Debugger (Vision Overlay)          │  ← What humans watch
 ├─────────────────────────────────────────────────────┤
-│  Layer 4: Axon Intelligence (Perception + Memory)   │  ← Semantic understanding
+│  Layer 5: Agent Interface (SDK / MCP / API)         │  ← What agents call
+├─────────────────────────────────────────────────────┤
+│  Layer 4: Axon Intelligence (Perception + Intent)   │  ← Semantic understanding
 ├─────────────────────────────────────────────────────┤
 │  Layer 3: Axon Security (Guard + Audit)             │  ← Trust boundary
 ├─────────────────────────────────────────────────────┤
 │  Layer 2: Axon Control Server (Session Manager)     │  ← State, sessions, routing
 ├─────────────────────────────────────────────────────┤
-│  Layer 1: Browser Runtime (Chromium + Playwright)   │  ← Actual browser
+│  Layer 1: Browser Runtime (Chromium + Scopes)       │  ← Actual browser
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -206,40 +208,31 @@ The "known elements" cache means the second time an agent wants to post on X, it
 ### Tool Definitions (LLM function calling format)
 
 ```python
-axon_navigate(url: str, session: str = "default") → str
+axon_navigate(url: str, session: str = "default", wait_until: str = "load") → str
 # "Navigated to https://x.com/home"
 
 axon_snapshot(session: str = "default", focus: str = None) → AxonSnapshot
-# Returns: compact semantic page representation
+# Returns: compact semantic page representation with (x, y) coordinates
 
 axon_act(ref: str, action: str, value: str = None, confirm: bool = False, session: str = "default") → AxonResult
 # Actions: click | fill | press | select | hover
 # Returns: { success, result, warnings, requires_confirm }
 
-axon_screenshot(session: str = "default") → str
-# Returns: file path to saved screenshot
-
-axon_wait(condition: str, session: str = "default") → str
-# Conditions: "load" | "networkidle" | "#selector" | "text:Done"
-
-axon_status(session: str = "default") → AxonStatus
-# Returns: { url, title, auth_state, page_load, active_warnings }
+axon_replay(session: str = "default") → AxonReplay
+# Returns: Full visual and action history of the session
 ```
 
-### What the agent sees vs what happens underneath
+---
 
-```
-Agent:  axon_snapshot(session="x_main")
-Axon:   → Check security: session authorized ✅
-        → Get Playwright page for session "x_main"
-        → Extract ARIA tree from Chromium
-        → Run intent classifier
-        → Check for prompt injection in page content
-        → Compress to compact format
-        → Return 150 tokens to agent
-```
+## Layer 6: Visual Debugger (Sprint 27)
 
-The agent never touches a CSS selector, HTML, or DevTools API.
+**Responsibility:** Real-time visibility into the agent's perception and action history.
+
+**Components:**
+- **Vision Overlay API**: Maps internal accessibility references to viewport coordinates (x, y, w, h).
+- **Action Path Tracer**: Visualizes the last 10 actions taken in the current session.
+- **Live Streamer**: Uses high-performance screencast capture (60fps) to pipe browser frames via WebSockets.
+- **Session Replay**: Allows full audit visualization by re-playing the action ledger with screenshots.
 
 ---
 

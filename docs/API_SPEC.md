@@ -40,6 +40,7 @@ Currently no authentication. For production, use:
 | POST | `/api/v1/sessions/{id}/wait` | Wait for condition |
 | GET | `/api/v1/sessions/{id}/cookies` | Get cookies |
 | POST | `/api/v1/sessions/{id}/cookies` | Set cookies |
+| GET | `/api/v1/sessions/{id}/replay` | Get session replay |
 | GET | `/api/v1/audit` | Get audit logs |
 
 ---
@@ -221,6 +222,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/ActResponse'
 
+  /api/v1/sessions/{id}/replay:
+    get:
+      summary: Get session replay
+      operationId: getReplay
+      tags:
+        - Browser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Replay data retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplayResponse'
+
   /api/v1/sessions/{id}/status:
     get:
       summary: Get session status
@@ -362,6 +383,60 @@ components:
           type: string
         auth_state:
           type: string
+
+    SnapshotElement:
+      type: object
+      properties:
+        ref:
+          type: string
+        type:
+          type: string
+        label:
+          type: string
+        role:
+          type: string
+        value:
+          type: string
+        x:
+          type: number
+        y:
+          type: number
+        width:
+          type: number
+        height:
+          type: number
+        visible:
+          type: boolean
+        enabled:
+          type: boolean
+        intent:
+          type: string
+        reversible:
+          type: string
+
+    ReplayFrame:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        data:
+          type: string
+          description: Base64 encoded screenshot
+        url:
+          type: string
+        metadata:
+          type: object
+
+    ReplayResponse:
+      type: object
+      properties:
+        session_id:
+          type: string
+        frames:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReplayFrame'
 
     CreateSessionRequest:
       type: object

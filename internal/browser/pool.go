@@ -6,54 +6,52 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"github.com/rennaisance-jomt/axon/pkg/logger"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
-	"github.com/go-rod/rod/lib/proto"
 	"github.com/rennaisance-jomt/axon/internal/config"
+	"github.com/rennaisance-jomt/axon/pkg/logger"
 )
 
-// WorkerStatus represents the health status of a browser worker
-type WorkerStatus string
+// ContextStatus represents the health status of a browser context
+type ContextStatus string
 
 const (
-	WorkerStatusHealthy   WorkerStatus = "healthy"
-	WorkerStatusUnhealthy WorkerStatus = "unhealthy"
-	WorkerStatusRotating  WorkerStatus = "rotating"
-	WorkerStatusClosed    WorkerStatus = "closed"
+	ContextStatusHealthy   ContextStatus = "healthy"
+	ContextStatusUnhealthy ContextStatus = "unhealthy"
+	ContextStatusClosed    ContextStatus = "closed"
 )
 
-// Worker represents a single browser daemon process in the pool
-type Worker struct {
+// BrowserContext represents an isolated incognito browser context
+type BrowserContext struct {
 	ID         string
-	Browser    *rod.Browser
-	Status     WorkerStatus
-	Sessions   int32 // atomic counter
-	CreatedAt time.Time
-	LastHealth time.Time
-	mu        sync.RWMutex
+	Context    *rod.Browser
+	Status     ContextStatus
+	CreatedAt  time.Time
+	LastUsed   time.Time
+	mu         sync.RWMutex
 }
 
-// Pool manages multiple browser worker processes
+// Pool manages a single browser daemon with isolated contexts
 type Pool struct {
 	cfg           *config.BrowserConfig
 	mu            sync.RWMutex
-	workers       map[string]*Worker
+	browser       *rod.Browser
+	launcher      *launcher.Launcher
+	contexts      map[string]*BrowserContext
+	availableCh   chan *BrowserContext
 	ctx           context.Context
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
-	healthCheckCh chan string // channel for health check signals
+	activeCount   int32
+	maxContexts   int
 }
 
-// NewPool creates a new browser pool with multiple workers
+// NewPool creates a new browser pool with a single daemon and context pooling
 func NewPool(cfg *config.BrowserConfig) (*Pool, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	
 	// Set defaults if not configured
-	if cfg.PoolSize <= 0 {
-		cfg.PoolSize = 5
-	}
 	if cfg.MaxSessionLife <= 0 {
 		cfg.MaxSessionLife = 30 * time.Minute
 	}
@@ -61,54 +59,53 @@ func NewPool(cfg *config.BrowserConfig) (*Pool, error) {
 		cfg.MaxMemoryMB = 512
 	}
 	if cfg.HealthCheckInterval <= 0 {
-		cfg.HealthCheckInterval = 30 * time.Second
+		cfg.HealthCheckInterval = 60 * time.Second
 	}
 
 	pool := &Pool{
-		cfg:           cfg,
-		ctx:           ctx,
-		cancel:        cancel,
-		workers:       make(map[string]*Worker),
-		healthCheckCh: make(chan string, 10),
+		cfg:         cfg,
+		ctx:         ctx,
+		cancel:      cancel,
+		contexts:    make(map[string]*BrowserContext),
+		availableCh: make(chan *BrowserContext, 100),
+		maxContexts: cfg.PoolSize * 10, // Allow 10x contexts vs old worker model
 	}
 
-	// Initialize the worker pool
-	if err := pool.initWorkers(cfg.PoolSize); err != nil {
+	if pool.maxContexts <= 0 {
+		pool.maxContexts = 50 // default max contexts
+	}
+
+	// Initialize the single browser daemon
+	if err := pool.initBrowser(); err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("failed to initialize workers: %w", err)
+		return nil, fmt.Errorf("failed to initialize browser daemon: %w", err)
 	}
 
 	// Start health check monitor
 	pool.startHealthMonitor()
 
+	logger.Success("Browser pool initialized with single daemon (max %d contexts)", pool.maxContexts)
+
 	return pool, nil
 }
 
-// initWorkers creates the initial set of browser workers
-func (p *Pool) initWorkers(count int) error {
-	for i := 0; i < count; i++ {
-		worker, err := p.createWorker()
-		if err != nil {
-			logger.Warn("Failed to create browser worker %d: %v", i, err)
-			continue
-		}
-		p.workers[worker.ID] = worker
-	}
-
-	if len(p.workers) == 0 {
-		return fmt.Errorf("failed to create any workers")
-	}
-
-	return nil
-}
-
-// createWorker creates a new browser worker
-func (p *Pool) createWorker() (*Worker, error) {
-	// Set up launcher
-	l := launcher.New().Leakless(false)
+// initBrowser creates the single browser daemon
+func (p *Pool) initBrowser() error {
+	// Set up launcher with performance optimizations
+	l := launcher.New().
+		Leakless(false).
+		Set("--no-first-run").
+		Set("--no-default-browser-check").
+		Set("--disable-background-timer-throttling").
+		Set("--disable-renderer-backgrounding").
+		Set("--disable-backgrounding-occluded-windows")
 
 	if p.cfg.LaunchOptions["--no-sandbox"] == true {
 		l.NoSandbox(true)
+	}
+
+	if p.cfg.LaunchOptions["--headless"] == true || p.cfg.LaunchOptions["headless"] == true {
+		l.Headless(true)
 	}
 
 	// Use custom binary if specified
@@ -116,172 +113,182 @@ func (p *Pool) createWorker() (*Worker, error) {
 		l.Bin(p.cfg.BinaryPath)
 	}
 
-	// Create browser
-	u := l.MustLaunch()
+	// Launch browser
+	u, err := l.Launch()
+	if err != nil {
+		return fmt.Errorf("failed to launch browser: %w", err)
+	}
 
+	p.launcher = l
+
+	// Connect to browser
 	browser := rod.New().ControlURL(u)
-
 	if err := browser.Connect(); err != nil {
-		return nil, fmt.Errorf("failed to connect to browser: %w", err)
+		l.Cleanup()
+		return fmt.Errorf("failed to connect to browser: %w", err)
 	}
 
-	worker := &Worker{
-		ID:         fmt.Sprintf("worker-%d", time.Now().UnixNano()),
-		Browser:    browser,
-		Status:     WorkerStatusHealthy,
-		Sessions:   0,
-		CreatedAt:  time.Now(),
-		LastHealth: time.Now(),
-	}
+	p.browser = browser
+	logger.Success("Browser daemon connected and ready")
 
-	return worker, nil
+	return nil
 }
 
-// Acquire returns an available browser worker
-func (p *Pool) Acquire() (*Worker, error) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
+// Acquire returns an available browser context (creates new if needed)
+func (p *Pool) Acquire() (*BrowserContext, error) {
 	select {
 	case <-p.ctx.Done():
 		return nil, fmt.Errorf("pool is closed")
 	default:
 	}
 
-	// Find the healthiest worker with lowest session count
-	var bestWorker *Worker
-	var minSessions int32 = int32(^int32(0)) // Max int32
-
-	for _, worker := range p.workers {
-		if worker.Status != WorkerStatusHealthy {
-			continue
-		}
-
-		sessions := atomic.LoadInt32(&worker.Sessions)
-		if sessions < minSessions {
-			minSessions = sessions
-			bestWorker = worker
-		}
-	}
-
-	if bestWorker == nil {
-		// All workers are unhealthy, try to find any available
-		for _, worker := range p.workers {
-			if worker.Status != WorkerStatusClosed {
-				bestWorker = worker
-				break
-			}
-		}
-		if bestWorker == nil {
-			return nil, fmt.Errorf("no available workers")
-		}
-	}
-
-	// Increment session count
-	atomic.AddInt32(&bestWorker.Sessions, 1)
-
-	return bestWorker, nil
-}
-
-// Release decrements the session count for a worker
-func (p *Pool) Release(worker *Worker) {
-	if worker == nil {
-		return
-	}
-	atomic.AddInt32(&worker.Sessions, -1)
-	
-	// Trigger health check for this worker
+	// Try to get from available channel (non-blocking)
 	select {
-	case p.healthCheckCh <- worker.ID:
+	case ctx := <-p.availableCh:
+		if ctx != nil && p.isContextHealthy(ctx) {
+			ctx.mu.Lock()
+			ctx.LastUsed = time.Now()
+			ctx.mu.Unlock()
+			atomic.AddInt32(&p.activeCount, 1)
+			return ctx, nil
+		}
 	default:
+		// No available context, will create new
 	}
-}
 
-// markUnhealthy marks a worker as unhealthy and triggers rotation
-func (p *Pool) markUnhealthy(workerID string) {
+	// Create new context if under limit
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	worker, exists := p.workers[workerID]
-	if !exists {
-		return
-	}
-
-	worker.mu.Lock()
-	worker.Status = WorkerStatusUnhealthy
-	worker.mu.Unlock()
-
-	logger.Warn("Browser worker %s is unhealthy, initiating rotation", workerID)
-
-	// Start rotation in background
-	go p.rotateWorker(workerID)
-}
-
-// rotateWorker replaces an unhealthy worker with a new one
-func (p *Pool) rotateWorker(workerID string) {
-	p.mu.Lock()
-	
-	worker, exists := p.workers[workerID]
-	if !exists {
-		p.mu.Unlock()
-		return
-	}
-
-	worker.mu.Lock()
-	worker.Status = WorkerStatusRotating
-	worker.mu.Unlock()
+	currentCount := len(p.contexts)
 	p.mu.Unlock()
 
-	logger.System("Rotating browser worker %s", workerID)
-
-	// Wait for sessions to drain (max 30 seconds)
-	timeout := time.After(30 * time.Second)
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
+	if currentCount >= p.maxContexts {
+		// Wait for an available context with timeout
 		select {
-		case <-timeout:
-			logger.Warn("Force rotating browser worker %s after timeout", workerID)
-			goto forceRotate
-		case <-ticker.C:
-			sessions := atomic.LoadInt32(&worker.Sessions)
-			if sessions == 0 {
-				goto rotate
+		case ctx := <-p.availableCh:
+			if ctx != nil && p.isContextHealthy(ctx) {
+				ctx.mu.Lock()
+				ctx.LastUsed = time.Now()
+				ctx.mu.Unlock()
+				atomic.AddInt32(&p.activeCount, 1)
+				return ctx, nil
 			}
+		case <-time.After(5 * time.Second):
+			return nil, fmt.Errorf("pool at max capacity (%d contexts) and timeout waiting", p.maxContexts)
+		case <-p.ctx.Done():
+			return nil, fmt.Errorf("pool is closed")
 		}
 	}
 
-forceRotate:
-rotate:
-	// Close the old browser
-	if worker.Browser != nil {
-		worker.Browser.Close()
+	// Create new context
+	return p.createContext()
+}
+
+// createContext creates a new incognito browser context
+func (p *Pool) createContext() (*BrowserContext, error) {
+	p.mu.RLock()
+	browser := p.browser
+	p.mu.RUnlock()
+
+	if browser == nil {
+		return nil, fmt.Errorf("browser daemon not available")
 	}
 
-	// Create new worker
-	p.mu.Lock()
-	newWorker, err := p.createWorker()
+	// Create incognito context
+	incognito, err := browser.Incognito()
 	if err != nil {
-		logger.Error("Failed to create replacement browser worker: %v", err)
-		// Keep the old worker in unhealthy state
-		worker.mu.Lock()
-		worker.Status = WorkerStatusUnhealthy
-		worker.mu.Unlock()
-		p.mu.Unlock()
+		return nil, fmt.Errorf("failed to create incognito context: %w", err)
+	}
+
+	ctx := &BrowserContext{
+		ID:        fmt.Sprintf("ctx-%d", time.Now().UnixNano()),
+		Context:   incognito,
+		Status:    ContextStatusHealthy,
+		CreatedAt: time.Now(),
+		LastUsed:  time.Now(),
+	}
+
+	p.mu.Lock()
+	p.contexts[ctx.ID] = ctx
+	p.mu.Unlock()
+
+	atomic.AddInt32(&p.activeCount, 1)
+
+	logger.Debug("Created new browser context: %s (total: %d)", ctx.ID, len(p.contexts))
+
+	return ctx, nil
+}
+
+// Release returns a context to the pool
+func (p *Pool) Release(ctx *BrowserContext) {
+	if ctx == nil {
 		return
 	}
 
-	// Replace the worker
-	delete(p.workers, workerID)
-	p.workers[newWorker.ID] = newWorker
+	atomic.AddInt32(&p.activeCount, -1)
+
+	ctx.mu.Lock()
+	if ctx.Status != ContextStatusHealthy {
+		ctx.mu.Unlock()
+		// Don't return unhealthy contexts to pool
+		go p.destroyContext(ctx)
+		return
+	}
+	ctx.LastUsed = time.Now()
+	ctx.mu.Unlock()
+
+	// Return to available pool
+	select {
+	case p.availableCh <- ctx:
+	default:
+		// Channel full, destroy context
+		go p.destroyContext(ctx)
+	}
+}
+
+// isContextHealthy checks if a context is healthy
+func (p *Pool) isContextHealthy(ctx *BrowserContext) bool {
+	ctx.mu.RLock()
+	status := ctx.Status
+	createdAt := ctx.CreatedAt
+	ctx.mu.RUnlock()
+
+	if status != ContextStatusHealthy {
+		return false
+	}
+
+	// Check if context has exceeded max lifetime
+	if time.Since(createdAt) > p.cfg.MaxSessionLife {
+		return false
+	}
+
+	return true
+}
+
+// destroyContext permanently destroys a context
+func (p *Pool) destroyContext(ctx *BrowserContext) {
+	ctx.mu.Lock()
+	if ctx.Status == ContextStatusClosed {
+		ctx.mu.Unlock()
+		return
+	}
+	ctx.Status = ContextStatusClosed
+	browserCtx := ctx.Context
+	ctx.mu.Unlock()
+
+	if browserCtx != nil {
+		browserCtx.Close()
+	}
+
+	p.mu.Lock()
+	delete(p.contexts, ctx.ID)
 	p.mu.Unlock()
 
-	logger.Success("Browser worker %s successfully rotated to %s", workerID, newWorker.ID)
+	logger.Debug("Destroyed browser context: %s", ctx.ID)
 }
 
 // startHealthMonitor starts the background health monitoring
 func (p *Pool) startHealthMonitor() {
+	// Context health monitor
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
@@ -292,19 +299,17 @@ func (p *Pool) startHealthMonitor() {
 			select {
 			case <-p.ctx.Done():
 				return
-			case workerID := <-p.healthCheckCh:
-				p.checkWorkerHealth(workerID)
 			case <-ticker.C:
-				p.checkAllWorkers()
+				p.checkAllContexts()
 			}
 		}
 	}()
 
-	// Start memory monitor
+	// Idle context cleanup
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
-		ticker := time.NewTicker(10 * time.Second) // Check memory every 10 seconds
+		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
 
 		for {
@@ -312,172 +317,180 @@ func (p *Pool) startHealthMonitor() {
 			case <-p.ctx.Done():
 				return
 			case <-ticker.C:
-				p.checkMemoryUsage()
+				p.cleanupIdleContexts()
 			}
 		}
 	}()
 }
 
-// checkWorkerHealth checks the health of a specific worker
-func (p *Pool) checkWorkerHealth(workerID string) {
+// checkAllContexts checks the health of all contexts
+func (p *Pool) checkAllContexts() {
 	p.mu.RLock()
-	worker, exists := p.workers[workerID]
-	p.mu.RUnlock()
-
-	if !exists {
-		return
-	}
-
-	// Perform a simple health check
-	// Try to get browser version as health check
-	worker.mu.Lock()
-	if worker.Browser == nil {
-		worker.mu.Unlock()
-		p.markUnhealthy(workerID)
-		return
-	}
-	worker.mu.Unlock()
-
-	// Simple check: try to create a page
-	_, err := worker.Browser.Page(proto.TargetCreateTarget{})
-	if err != nil {
-		logger.Warn("Browser worker %s health check failed: %v", workerID, err)
-		p.markUnhealthy(workerID)
-		return
-	}
-
-	worker.mu.Lock()
-	worker.LastHealth = time.Now()
-	worker.Status = WorkerStatusHealthy
-	worker.mu.Unlock()
-}
-
-// checkAllWorkers checks the health of all workers
-func (p *Pool) checkAllWorkers() {
-	p.mu.RLock()
-	workerIDs := make([]string, 0, len(p.workers))
-	for id := range p.workers {
-		workerIDs = append(workerIDs, id)
+	contexts := make([]*BrowserContext, 0, len(p.contexts))
+	for _, ctx := range p.contexts {
+		contexts = append(contexts, ctx)
 	}
 	p.mu.RUnlock()
 
-	for _, id := range workerIDs {
+	for _, ctx := range contexts {
 		select {
 		case <-p.ctx.Done():
 			return
 		default:
-			p.checkWorkerHealth(id)
+			p.checkContextHealth(ctx)
 		}
 	}
 }
 
-// checkMemoryUsage monitors memory usage of workers
-func (p *Pool) checkMemoryUsage() {
+// checkContextHealth performs a lightweight health check on a context
+func (p *Pool) checkContextHealth(ctx *BrowserContext) {
+	ctx.mu.RLock()
+	if ctx.Status != ContextStatusHealthy {
+		ctx.mu.RUnlock()
+		return
+	}
+	browserCtx := ctx.Context
+	ctx.mu.RUnlock()
+
+	if browserCtx == nil {
+		p.markUnhealthy(ctx)
+		return
+	}
+
+	// Sprint 27.5: Use Version() instead of Page() for health check to avoid CDP congestion.
+	// Version() is a very lightweight call that confirms the connection is alive.
+	_, err := browserCtx.Version()
+	if err != nil {
+		logger.Warn("Context %s health check failed (Connection lost): %v", ctx.ID, err)
+		p.markUnhealthy(ctx)
+		return
+	}
+}
+
+// markUnhealthy marks a context as unhealthy
+func (p *Pool) markUnhealthy(ctx *BrowserContext) {
+	ctx.mu.Lock()
+	ctx.Status = ContextStatusUnhealthy
+	ctx.mu.Unlock()
+
+	logger.Warn("Context %s marked unhealthy, will be destroyed", ctx.ID)
+	go p.destroyContext(ctx)
+}
+
+// cleanupIdleContexts removes contexts that have been idle too long
+func (p *Pool) cleanupIdleContexts() {
 	p.mu.RLock()
-	workers := make([]*Worker, 0, len(p.workers))
-	for _, w := range p.workers {
-		workers = append(workers, w)
+	contexts := make([]*BrowserContext, 0, len(p.contexts))
+	for _, ctx := range p.contexts {
+		contexts = append(contexts, ctx)
 	}
 	p.mu.RUnlock()
 
-	for _, worker := range workers {
-		// Get memory usage via CDP
-		worker.mu.Lock()
-		browser := worker.Browser
-		worker.mu.Unlock()
+	idleTimeout := 3 * time.Minute
 
-		if browser == nil {
-			continue
-		}
+	for _, ctx := range contexts {
+		ctx.mu.RLock()
+		lastUsed := ctx.LastUsed
+		status := ctx.Status
+		ctx.mu.RUnlock()
 
-		// Use process memory metrics via Eval on a temporary page
-		var memUsage int64
-		page, err := browser.Page(proto.TargetCreateTarget{})
-		if err == nil {
-			if result, err := page.Eval(`() => { 
-				if (performance.memory) {
-					return performance.memory.usedJSHeapSize;
-				}
-				return 0;
-			}`); err == nil {
-				memUsage = int64(result.Value.Int())
-			}
-			page.Close()
-		}
-
-		memMB := memUsage / (1024 * 1024)
-		if memMB > int64(p.cfg.MaxMemoryMB) {
-			logger.Warn("Browser worker %s exceeded memory limit: %dMB > %dMB", 
-				worker.ID, memMB, p.cfg.MaxMemoryMB)
-			p.markUnhealthy(worker.ID)
+		if status == ContextStatusHealthy && time.Since(lastUsed) > idleTimeout {
+			logger.Debug("Cleaning up idle context: %s", ctx.ID)
+			go p.destroyContext(ctx)
 		}
 	}
 }
 
-// Close closes all browser workers in the pool
+// Close closes the browser pool and all contexts
 func (p *Pool) Close() error {
+	p.mu.Lock()
+	select {
+	case <-p.ctx.Done():
+		p.mu.Unlock()
+		return nil
+	default:
+	}
 	p.cancel()
+	p.mu.Unlock()
+
 	p.wg.Wait()
 
+	// Close all contexts
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	var firstErr error
-	for _, worker := range p.workers {
-		if worker.Browser != nil {
-			if err := worker.Browser.Close(); err != nil && firstErr == nil {
-				firstErr = err
-			}
-		}
-		worker.mu.Lock()
-		worker.Status = WorkerStatusClosed
-		worker.mu.Unlock()
+	contexts := make([]*BrowserContext, 0, len(p.contexts))
+	for _, ctx := range p.contexts {
+		contexts = append(contexts, ctx)
 	}
-	p.workers = make(map[string]*Worker)
+	p.mu.Unlock()
 
-	return firstErr
+	for _, ctx := range contexts {
+		ctx.mu.Lock()
+		if ctx.Context != nil && ctx.Status != ContextStatusClosed {
+			ctx.Context.Close()
+		}
+		ctx.Status = ContextStatusClosed
+		ctx.mu.Unlock()
+	}
+
+	// Close browser daemon
+	p.mu.Lock()
+	if p.browser != nil {
+		p.browser.Close()
+		p.browser = nil
+	}
+	if p.launcher != nil {
+		p.launcher.Cleanup()
+		p.launcher = nil
+	}
+	p.mu.Unlock()
+
+	logger.Success("Browser pool closed")
+	return nil
 }
 
 // Stats returns pool statistics
 func (p *Pool) Stats() (active, idle int) {
+	active = int(atomic.LoadInt32(&p.activeCount))
+	
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-
-	active = 0
-	idle = 0
-
-	for _, worker := range p.workers {
-		worker.mu.RLock()
-		status := worker.Status
-		sessions := atomic.LoadInt32(&worker.Sessions)
-		worker.mu.RUnlock()
-
-		if status == WorkerStatusHealthy && sessions == 0 {
-			idle++
-		}
-		if status == WorkerStatusHealthy {
-			active++
-		}
+	
+	total := len(p.contexts)
+	idle = total - active
+	if idle < 0 {
+		idle = 0
 	}
 
 	return active, idle
 }
 
-// GetWorkerCount returns the number of workers in the pool
-func (p *Pool) GetWorkerCount() int {
+// GetContextCount returns the number of contexts in the pool
+func (p *Pool) GetContextCount() int {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return len(p.workers)
+	return len(p.contexts)
 }
 
-// GetWorker returns a worker by ID
-func (p *Pool) GetWorker(id string) (*Worker, error) {
+// GetContext returns a context by ID (for backward compatibility with session.go)
+func (p *Pool) GetContext(id string) (*BrowserContext, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	worker, exists := p.workers[id]
+	ctx, exists := p.contexts[id]
 	if !exists {
-		return nil, fmt.Errorf("worker %s not found", id)
+		return nil, fmt.Errorf("context %s not found", id)
 	}
-	return worker, nil
+	return ctx, nil
+}
+
+// GetWorker is an alias for GetContext for backward compatibility
+// Deprecated: Use GetContext instead
+func (p *Pool) GetWorker(id string) (*BrowserContext, error) {
+	return p.GetContext(id)
+}
+
+// GetWorkerCount is an alias for GetContextCount for backward compatibility
+// Deprecated: Use GetContextCount instead
+func (p *Pool) GetWorkerCount() int {
+	return p.GetContextCount()
 }

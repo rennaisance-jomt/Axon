@@ -64,7 +64,7 @@ func (cm *CheckpointManager) CreateCheckpoint(session *Session, description stri
 	// Get localStorage using simple JS
 	localStorage := make(map[string]string)
 	if session.Page != nil {
-		if result, err := session.Page.Eval(`() => JSON.stringify(localStorage)`); err == nil {
+		if result, err := session.Page.Eval(`JSON.stringify(localStorage)`); err == nil {
 			str := result.Value.String()
 			if str != "" && str != "null" {
 				_ = json.Unmarshal([]byte(str), &localStorage)
@@ -75,7 +75,7 @@ func (cm *CheckpointManager) CreateCheckpoint(session *Session, description stri
 	// Get sessionStorage
 	sessionStorage := make(map[string]string)
 	if session.Page != nil {
-		if result, err := session.Page.Eval(`() => JSON.stringify(sessionStorage)`); err == nil {
+		if result, err := session.Page.Eval(`JSON.stringify(sessionStorage)`); err == nil {
 			str := result.Value.String()
 			if str != "" && str != "null" {
 				_ = json.Unmarshal([]byte(str), &sessionStorage)
@@ -198,7 +198,7 @@ func (cm *CheckpointManager) RestoreFromCheckpoint(session *Session, checkpoint 
 	if len(checkpoint.LocalStorage) > 0 {
 		for k, v := range checkpoint.LocalStorage {
 			_, _ = session.Page.Eval(
-				`(key, value) => { try { localStorage.setItem(key, value); } catch(e) { console.error(e); } }`,
+				`(function() { try { localStorage.setItem(arguments[0], arguments[1]); } catch(e) { console.error(e); } })`,
 				k, v)
 		}
 	}
@@ -207,7 +207,7 @@ func (cm *CheckpointManager) RestoreFromCheckpoint(session *Session, checkpoint 
 	if len(checkpoint.SessionStorage) > 0 {
 		for k, v := range checkpoint.SessionStorage {
 			_, _ = session.Page.Eval(
-				`(key, value) => { try { sessionStorage.setItem(key, value); } catch(e) { console.error(e); } }`,
+				`(function() { try { sessionStorage.setItem(arguments[0], arguments[1]); } catch(e) { console.error(e); } })`,
 				k, v)
 		}
 	}

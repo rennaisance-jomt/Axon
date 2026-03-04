@@ -7,6 +7,13 @@ import (
 	"time"
 
 	"github.com/rennaisance-jomt/axon/pkg/logger"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Config holds telemetry configuration
@@ -31,13 +38,17 @@ type Span struct {
 	Error       error
 }
 
-// Tracer provides basic distributed tracing
+// Tracer provides basic distributed tracing with OpenTelemetry support
 type Tracer struct {
-	mu          sync.RWMutex
-	serviceName string
-	enabled     bool
-	spans       []*Span
-	maxSpans    int
+	mu              sync.RWMutex
+	serviceName     string
+	enabled         bool
+	spans           []*Span
+	maxSpans        int
+	tracerProvider  *sdktrace.TracerProvider
+	tracer          trace.Tracer
+	propagator      propagation.TextMapPropagator
+	otlpEndpoint    string
 }
 
 // Metrics holds basic telemetry metrics
@@ -49,7 +60,7 @@ type Metrics struct {
 	durations       []time.Duration
 }
 
-// NewTracer creates a new telemetry tracer
+// NewTracer creates a new telemetry tracer with OpenTelemetry
 func NewTracer(cfg *Config) (*Tracer, error) {
 	if cfg == nil {
 		cfg = &Config{
@@ -59,33 +70,101 @@ func NewTracer(cfg *Config) (*Tracer, error) {
 		}
 	}
 
-	return &Tracer{
-		serviceName: cfg.ServiceName,
-		enabled:     cfg.Enabled,
-		spans:       make([]*Span, 0),
-		maxSpans:    1000,
-	}, nil
+	t := &Tracer{
+		serviceName:  cfg.ServiceName,
+		enabled:      cfg.Enabled,
+		spans:        make([]*Span, 0),
+		maxSpans:     1000,
+		otlpEndpoint: cfg.OtlpEndpoint,
+		propagator:   propagation.NewCompositeTextMapPropagator(
+			propagation.TraceContext{},
+			propagation.Baggage{},
+		),
+	}
+
+	// Initialize OpenTelemetry if endpoint is configured
+	if cfg.OtlpEndpoint != "" && cfg.Enabled {
+		if err := t.initOpenTelemetry(cfg); err != nil {
+			logger.Warn("Failed to initialize OpenTelemetry: %v, falling back to simple tracing", err)
+		}
+	}
+
+	return t, nil
 }
 
-// StartSpan starts a new span
+// initOpenTelemetry initializes the OpenTelemetry tracer provider
+func (t *Tracer) initOpenTelemetry(cfg *Config) error {
+	ctx := context.Background()
+
+	// Create OTLP exporter
+	exporter, err := otlptracegrpc.New(ctx,
+		otlptracegrpc.WithEndpoint(cfg.OtlpEndpoint),
+		otlptracegrpc.WithInsecure(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create OTLP exporter: %w", err)
+	}
+
+	// Create resource with service name
+	res, err := resource.New(ctx,
+		resource.WithAttributes(
+			semconv.ServiceNameKey.String(cfg.ServiceName),
+			semconv.ServiceVersionKey.String(cfg.ServiceVersion),
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create resource: %w", err)
+	}
+
+	// Create tracer provider with sampling
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(cfg.SampleRate)),
+	)
+
+	t.tracerProvider = tp
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(t.propagator)
+
+	// Create tracer
+	t.tracer = tp.Tracer(cfg.ServiceName)
+
+	logger.Success("OpenTelemetry initialized with endpoint: %s", cfg.OtlpEndpoint)
+	return nil
+}
+
+// StartSpan starts a new span (simple mode)
 func (t *Tracer) StartSpan(ctx context.Context, name string) (context.Context, *Span) {
 	if !t.enabled {
 		return ctx, nil
 	}
 
+	// Use OpenTelemetry tracer if available
+	if t.tracer != nil {
+		var span trace.Span
+		ctx, span = t.tracer.Start(ctx, name)
+		return ctx, &Span{
+			Name:      name,
+			TraceID:   span.SpanContext().TraceID().String(),
+			SpanID:    span.SpanContext().SpanID().String(),
+			StartTime: time.Now(),
+			Attributes: make(map[string]string),
+		}
+	}
+
+	// Fallback to simple tracing
 	span := &Span{
 		Name:      name,
 		StartTime: time.Now(),
 		Attributes: make(map[string]string),
 	}
-
-	// Generate simple span ID
 	span.SpanID = fmt.Sprintf("%016x", time.Now().UnixNano())
-	
+
 	return context.WithValue(ctx, "span", span), span
 }
 
-// EndSpan ends a span
+// EndSpan ends a span (simple mode)
 func (t *Tracer) EndSpan(span *Span, err error) {
 	if span == nil || !t.enabled {
 		return
@@ -114,15 +193,14 @@ func (t *Tracer) AddAttribute(span *Span, key, value string) {
 	span.Attributes[key] = value
 }
 
-// RecordRequest records a request metric (simplified)
+// RecordRequest records a request metric
 func (t *Tracer) RecordRequest(ctx context.Context, name string, duration time.Duration, success bool) {
-	// In a full implementation, this would send to OTLP
-	// For now, we just track locally
+	// In production, this would send to OTLP metrics
 }
 
 // RecordSessionChange records session count change
 func (t *Tracer) RecordSessionChange(ctx context.Context, delta int64) {
-	// In a full implementation, this would send to OTLP
+	// In production, this would send to OTLP metrics
 }
 
 // GetTraceID returns the current trace ID
@@ -174,4 +252,44 @@ func (c *ConsoleExporter) Shutdown() error {
 // WithContext is a no-op for compatibility
 func (t *Tracer) WithContext(ctx context.Context) context.Context {
 	return ctx
+}
+
+// Shutdown shuts down the tracer provider
+func (t *Tracer) Shutdown(ctx context.Context) error {
+	if t.tracerProvider != nil {
+		return t.tracerProvider.Shutdown(ctx)
+	}
+	return nil
+}
+
+// StartSessionSpan starts a span for a session operation
+func (t *Tracer) StartSessionSpan(ctx context.Context, sessionID string) (context.Context, *Span) {
+	ctx, span := t.StartSpan(ctx, "session."+sessionID)
+	if span != nil {
+		span.Attributes["session.id"] = sessionID
+		span.Attributes["span.type"] = "session"
+	}
+	return ctx, span
+}
+
+// StartSnapshotSpan starts a span for a snapshot operation
+func (t *Tracer) StartSnapshotSpan(ctx context.Context, sessionID string) (context.Context, *Span) {
+	ctx, span := t.StartSpan(ctx, "snapshot")
+	if span != nil {
+		span.Attributes["session.id"] = sessionID
+		span.Attributes["span.type"] = "snapshot"
+	}
+	return ctx, span
+}
+
+// StartActionSpan starts a span for an action operation
+func (t *Tracer) StartActionSpan(ctx context.Context, sessionID, action, ref string) (context.Context, *Span) {
+	ctx, span := t.StartSpan(ctx, "action."+action)
+	if span != nil {
+		span.Attributes["session.id"] = sessionID
+		span.Attributes["action.type"] = action
+		span.Attributes["action.ref"] = ref
+		span.Attributes["span.type"] = "action"
+	}
+	return ctx, span
 }

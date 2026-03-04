@@ -157,15 +157,21 @@ func (pf *ProxyFilter) initDefaultPatterns() {
 	patterns := []*DomainPattern{
 		// Ads
 		{Pattern: `.*\.doubleclick\.net`, Category: CategoryAds, Weight: 0.9},
+		{Pattern: `doubleclick\.net`, Category: CategoryAds, Weight: 0.9},
 		{Pattern: `.*\.googlesyndication\.com`, Category: CategoryAds, Weight: 0.9},
+		{Pattern: `googlesyndication\.com`, Category: CategoryAds, Weight: 0.9},
 		{Pattern: `.*\.adservice\.google\.`, Category: CategoryAds, Weight: 0.8},
 		{Pattern: `.*\.adnxs\.com`, Category: CategoryAds, Weight: 0.9},
+		{Pattern: `adnxs\.com`, Category: CategoryAds, Weight: 0.9},
 		{Pattern: `.*\.amazon-adsystem\.com`, Category: CategoryAds, Weight: 0.8},
 
 		// Tracking
 		{Pattern: `.*\.google-analytics\.com`, Category: CategoryTracking, Weight: 0.9},
-		{Pattern: `.*\.facebook\.com\/tr`, Category: CategoryTracking, Weight: 0.9},
+		{Pattern: `google-analytics\.com`, Category: CategoryTracking, Weight: 0.9},
+		{Pattern: `facebook`, Category: CategoryTracking, Weight: 0.9},
+		{Pattern: `connect\.facebook\.net`, Category: CategoryTracking, Weight: 0.8},
 		{Pattern: `.*\.hotjar\.com`, Category: CategoryTracking, Weight: 0.8},
+		{Pattern: `hotjar\.com`, Category: CategoryTracking, Weight: 0.8},
 		{Pattern: `.*\.segment\.io`, Category: CategoryTracking, Weight: 0.8},
 		{Pattern: `.*\.mixpanel\.com`, Category: CategoryTracking, Weight: 0.8},
 
@@ -179,6 +185,7 @@ func (pf *ProxyFilter) initDefaultPatterns() {
 
 		// Analytics
 		{Pattern: `.*\.newrelic\.com`, Category: CategoryAnalytics, Weight: 0.5},
+		{Pattern: `newrelic\.com`, Category: CategoryAnalytics, Weight: 0.5},
 		{Pattern: `.*\.datadog\.`, Category: CategoryAnalytics, Weight: 0.5},
 	}
 

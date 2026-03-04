@@ -143,12 +143,31 @@ func (s *MCPServer) handleToolsList(msg *MCPMessage) error {
 						Type:        "string",
 						Description: "The URL to navigate to",
 					},
+					"wait_until": {
+						Type:        "string",
+						Description: "Condition to wait for: none, load, domcontentloaded, networkidle",
+						Enum:        []string{"none", "load", "domcontentloaded", "networkidle"},
+					},
 					"session_id": {
 						Type:        "string",
 						Description: "Optional session ID (creates new if not provided)",
 					},
 				},
 				Required: []string{"url"},
+			},
+		},
+		{
+			Name:        "axon_replay",
+			Description: "Get a visual replay of the session history",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"session_id": {
+						Type:        "string",
+						Description: "Session ID",
+					},
+				},
+				Required: []string{"session_id"},
 			},
 		},
 		{
@@ -272,6 +291,8 @@ func (s *MCPServer) handleToolsCall(msg *MCPMessage) error {
 		result, err = s.toolAct(params.Arguments)
 	case "axon_find_and_act":
 		result, err = s.toolFindAndAct(params.Arguments)
+	case "axon_replay":
+		result, err = s.toolReplay(params.Arguments)
 	case "axon_get_status":
 		result, err = s.toolGetStatus(params.Arguments)
 	default:
@@ -312,7 +333,12 @@ func (s *MCPServer) toolNavigate(args map[string]interface{}) (interface{}, erro
 	
 	s.currentSession = sessionID
 	
-	if err := session.Navigate(url, "load"); err != nil {
+	waitUntil := "load"
+	if w, ok := args["wait_until"].(string); ok && w != "" {
+		waitUntil = w
+	}
+
+	if err := session.Navigate(url, waitUntil); err != nil {
 		return nil, fmt.Errorf("navigation failed: %w", err)
 	}
 	
@@ -479,6 +505,26 @@ func (s *MCPServer) toolFindAndAct(args map[string]interface{}) (interface{}, er
 		"value":      value,
 		"session_id": sessionID,
 	})
+}
+
+func (s *MCPServer) toolReplay(args map[string]interface{}) (interface{}, error) {
+	sessionID, ok := args["session_id"].(string)
+	if !ok || sessionID == "" {
+		return nil, fmt.Errorf("session_id is required")
+	}
+
+	session, err := s.sessions.Get(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("session not found: %w", err)
+	}
+
+	// For MCP, we return the action history which is the core of the replay metadata
+	return map[string]interface{}{
+		"session_id":     session.ID,
+		"action_history": session.ActionHistory,
+		"url":            session.URL,
+		"title":          session.Title,
+	}, nil
 }
 
 func (s *MCPServer) toolGetStatus(args map[string]interface{}) (interface{}, error) {

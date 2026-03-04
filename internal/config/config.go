@@ -14,6 +14,7 @@ type Config struct {
 	Security SecurityConfig
 	Storage  StorageConfig
 	Logging  LoggingConfig
+	Telemetry TelemetryConfig
 }
 
 // ServerConfig holds HTTP server configuration
@@ -79,6 +80,17 @@ type LoggingConfig struct {
 	Output string // stdout, file
 }
 
+// TelemetryConfig holds telemetry configuration
+type TelemetryConfig struct {
+	Enabled        bool
+	Provider       string // "langfuse", "datadog", "grafana", "jaeger", "zipkin"
+	Endpoint       string // OTLP endpoint URL
+	PublicKey      string // For cloud providers
+	SecretKey      string // For cloud providers
+	SampleRate     float64
+	Environment    string // "development", "production"
+}
+
 // DefaultConfig returns default configuration
 func DefaultConfig() *Config {
 	return &Config{
@@ -125,6 +137,13 @@ func DefaultConfig() *Config {
 			Format: "json",
 			Output: "stdout",
 		},
+		Telemetry: TelemetryConfig{
+			Enabled:     false, // Enable when configured
+			Provider:    "langfuse",
+			Endpoint:   "",
+			SampleRate:  1.0,
+			Environment: "development",
+		},
 	}
 }
 
@@ -136,6 +155,7 @@ func Load() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
+	viper.AddConfigPath("./config")
 	viper.AddConfigPath("$HOME/.axon")
 	viper.AddConfigPath("/etc/axon")
 
@@ -150,6 +170,11 @@ func Load() (*Config, error) {
 	viper.BindEnv("BROWSER_POOL", "pool_size")
 	viper.BindEnv("LOG_LEVEL", "log_level")
 	viper.BindEnv("DATA_DIR", "data_dir")
+
+	// Langfuse specific environment variables
+	viper.BindEnv("telemetry.public_key", "LANGFUSE_PUBLIC_KEY")
+	viper.BindEnv("telemetry.secret_key", "LANGFUSE_SECRET_KEY")
+	viper.BindEnv("telemetry.endpoint", "LANGFUSE_BASE_URL")
 
 	// Try to read config file (optional)
 	if err := viper.ReadInConfig(); err == nil {

@@ -1,0 +1,334 @@
+"""Axon Python SDK - Async client for browser automation."""
+
+import os
+from typing import Optional
+import aiohttp
+
+from .models import (
+    SessionInfo,
+    CreateSessionResponse,
+    SnapshotResponse,
+    ActionResponse,
+    NavigateResponse,
+    ReplayResponse,
+    SessionList,
+    APIError,
+)
+
+
+class Axon:
+    """
+    Async Axon client for browser automation.
+    
+    Example usage:
+    
+    ```python
+    import asyncio
+    from axon import Axon
+    
+    async def main():
+        async with Axon("http://localhost:8020/api/v1") as axon:
+            # Create a session
+            session = await axon.create_session("mysession")
+            
+            # Navigate to a URL
+            await axon.navigate("mysession", "https://github.com")
+            
+            # Get snapshot
+            snapshot = await axon.snapshot("mysession")
+            print(snapshot.title)
+            
+            # Perform action
+            result = await axon.act("mysession", "click", "e1")
+    
+    asyncio.run(main())
+    ```
+    """
+
+    def __init__(
+        self,
+        api_url: Optional[str] = None,
+        timeout: float = 30.0,
+    ):
+        """
+        Initialize the Axon client.
+        
+        Args:
+            api_url: Base URL for the Axon API. 
+                    Defaults to http://localhost:8020/api/v1
+                    Can be set via AXON_API_URL environment variable.
+            timeout: Request timeout in seconds.
+        """
+        self.api_url = api_url or os.getenv("AXON_API_URL", "http://localhost:8020/api/v1")
+        self.timeout = aiohttp.ClientTimeout(total=timeout)
+        self._session: Optional[aiohttp.ClientSession] = None
+
+    async def __aenter__(self) -> "Axon":
+        """Async context manager entry."""
+        self._session = aiohttp.ClientSession(timeout=self.timeout)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Async context manager exit."""
+        if self._session:
+            await self._session.close()
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        **kwargs,
+    ) -> dict:
+        """Make an API request."""
+        url = f"{self.api_url}{path}"
+        async with self._session.request(method, url, **kwargs) as response:
+            if response.status >= 400:
+                error_text = await response.text()
+                raise AxonError(
+                    f"API error ({response.status}): {error_text}",
+                    status_code=response.status,
+                )
+            if response.status == 204:
+                return {}
+            return await response.json()
+
+    # Session Management
+
+    async def create_session(
+        self,
+        session_id: str,
+        profile: Optional[str] = None,
+    ) -> CreateSessionResponse:
+        """
+        Create a new browser session.
+        
+        Args:
+            session_id: Unique identifier for the session.
+            profile: Optional browser profile name.
+            
+        Returns:
+            CreateSessionResponse with session details.
+        """
+        data = {"id": session_id}
+        if profile:
+            data["profile"] = profile
+        
+        result = await self._request("POST", "/sessions", json=data)
+        return CreateSessionResponse(**result)
+
+    async def get_session(self, session_id: str) -> SessionInfo:
+        """
+        Get session information.
+        
+        Args:
+            session_id: The session ID.
+            
+        Returns:
+            SessionInfo with session details.
+        """
+        result = await self._request("GET", f"/sessions/{session_id}")
+        return SessionInfo(**result)
+
+    async def list_sessions(self) -> SessionList:
+        """
+        List all active sessions.
+        
+        Returns:
+            SessionList containing all sessions.
+        """
+        result = await self._request("GET", "/sessions")
+        return SessionList(**result)
+
+    async def delete_session(self, session_id: str) -> None:
+        """
+        Delete a session.
+        
+        Args:
+            session_id: The session ID to delete.
+        """
+        await self._request("DELETE", f"/sessions/{session_id}")
+
+    # Navigation
+
+    async def navigate(self, session_id: str, url: str, wait_until: str = "load") -> NavigateResponse:
+        """
+        Navigate to a URL.
+        
+        Args:
+            session_id: The session ID.
+            url: The URL to navigate to.
+            wait_until: Condition to wait for (none, load, domcontentloaded, networkidle).
+            
+        Returns:
+            NavigateResponse with navigation result.
+        """
+        result = await self._request(
+            "POST",
+            f"/sessions/{session_id}/navigate",
+            json={"url": url, "wait_until": wait_until},
+        )
+        return NavigateResponse(**result)
+
+    # Snapshot
+
+    async def snapshot(
+        self,
+        session_id: str,
+        ref: Optional[str] = None,
+    ) -> SnapshotResponse:
+        """
+        Get a snapshot of the current page.
+        
+        Args:
+            session_id: The session ID.
+            ref: Optional element reference to focus on.
+            
+        Returns:
+            SnapshotResponse with page elements.
+        """
+        data = {}
+        if ref:
+            data["ref"] = ref
+        
+        result = await self._request(
+            "POST",
+            f"/sessions/{session_id}/snapshot",
+            json=data,
+        )
+        return SnapshotResponse(**result)
+
+    # Actions
+
+    async def act(
+        self,
+        session_id: str,
+        action: str,
+        ref: str,
+        value: Optional[str] = None,
+        confirm: bool = False,
+    ) -> ActionResponse:
+        """
+        Perform an action on an element.
+        
+        Args:
+            session_id: The session ID.
+            action: Action to perform (click, fill, hover, select, etc.)
+            ref: Element reference ID.
+            value: Value for fill/select actions.
+            confirm: Confirm irreversible action.
+            
+        Returns:
+            ActionResponse with result.
+        """
+        data = {
+            "action": action,
+            "ref": ref,
+            "confirm": confirm,
+        }
+        if value is not None:
+            data["value"] = value
+        
+        result = await self._request(
+            "POST",
+            f"/sessions/{session_id}/act",
+            json=data,
+        )
+        return ActionResponse(**result)
+
+    async def click(self, session_id: str, ref: str) -> ActionResponse:
+        """Click an element."""
+        return await self.act(session_id, "click", ref)
+
+    async def fill(
+        self,
+        session_id: str,
+        ref: str,
+        value: str,
+    ) -> ActionResponse:
+        """Fill an input field."""
+        return await self.act(session_id, "fill", ref, value=value)
+
+    async def hover(self, session_id: str, ref: str) -> ActionResponse:
+        """Hover over an element."""
+        return await self.act(session_id, "hover", ref)
+
+    async def select(
+        self,
+        session_id: str,
+        ref: str,
+        value: str,
+    ) -> ActionResponse:
+        """Select an option."""
+        return await self.act(session_id, "select", ref, value=value)
+
+    # Find and Act
+
+    async def find_and_act(
+        self,
+        session_id: str,
+        action: str,
+        intent: str,
+        value: Optional[str] = None,
+    ) -> ActionResponse:
+        """
+        Find an element by intent/description and perform an action.
+        
+        Args:
+            session_id: The session ID.
+            action: Action to perform.
+            intent: Semantic intent or description of the element.
+            value: Optional value for the action.
+            
+        Returns:
+            ActionResponse with result.
+        """
+        data = {
+            "action": action,
+            "intent": intent,
+        }
+        if value is not None:
+            data["value"] = value
+        
+        result = await self._request(
+            "POST",
+            f"/sessions/{session_id}/find_and_act",
+            json=data,
+        )
+        return ActionResponse(**result)
+
+    # Replay
+
+    async def replay(self, session_id: str) -> ReplayResponse:
+        """
+        Get a replay of the session history.
+        
+        Args:
+            session_id: The session ID.
+            
+        Returns:
+            ReplayResponse with historical frames and metadata.
+        """
+        result = await self._request("GET", f"/sessions/{session_id}/replay")
+        return ReplayResponse(**result)
+
+    # Status
+
+    async def status(self, session_id: str) -> dict:
+        """
+        Get session status.
+        
+        Args:
+            session_id: The session ID.
+            
+        Returns:
+            Status information.
+        """
+        return await self._request("GET", f"/sessions/{session_id}/status")
+
+
+class AxonError(Exception):
+    """Axon API error."""
+
+    def __init__(self, message: str, status_code: int = 0):
+        super().__init__(message)
+        self.status_code = status_code
