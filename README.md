@@ -17,7 +17,7 @@
 
 ---
 
-## 🛑 The DOM is the old way of interacting with AI
+## DOM is the old way of interacting with AI
 
 Traditional browsers (Chrome, Firefox) and automation tools (Playwright, Selenium) were built for human retinas and pixels. Treating a web page as an XML document or an Accessibility Tree is the wrong abstraction for intelligence.  
 
@@ -27,7 +27,7 @@ Think of Axon as a **core LEGO block in your AI infrastructure**. It plugs seaml
 
 ---
 
-## 💎 The Economic Reality: 98% Cost Reduction
+## The Economic Reality: 98% Cost Reduction
 
 The biggest bottleneck in AI agent adoption is API cost—spending dollars in tokens just to read a single webpage. **Axon guarantees the economic survival of agents.**
 
@@ -39,7 +39,7 @@ The biggest bottleneck in AI agent adoption is API cost—spending dollars in to
 
 ---
 
-## ⚡ Proven Benchmarks
+## Proven Benchmarks
 
 Axon is fundamentally more efficient than standard browser automation. Verified against real-world targets:
 
@@ -54,7 +54,7 @@ Axon is fundamentally more efficient than standard browser automation. Verified 
 
 ---
 
-## ⚙️ Under The Hood: How Axon Dominates
+## Under The Hood: How Axon Dominates
 
 Standard "Agent Browsers" wrap heavy QA-testing tools like Playwright in Node.js or Python, resulting in massive dependency chains, slow boot times, and sluggish execution. 
 
@@ -101,11 +101,11 @@ Axon provides a complete toolkit to bring production-grade browser capabilities 
 
 ---
 
-## 🔭 The Vision: Why the AI-native web matters
+## The Vision: Why the AI-native web matters
 
 Currently, AI is strapped to a browser designed for humans. We are wasting compute parsing pixels, flexboxes, and Javascript UI state. The internet is built for human consumption. Axon creates an invisible, machine-to-machine version of the internet that LLMs can naturally perceive, without losing the ability to interact with dynamic web apps. Read the full manifesto in [docs/VISION.md](docs/VISION.md).
 
-## 🛠 What Can You Build with Axon?
+## What Can You Build with Axon?
 
 Because Axon makes interactions 98% cheaper and 10x more stable, entirely new agent architectures become possible:
 - **Autonomous Researchers:** Agents that read thousands of pages a day to compile deep market analysis without bankrupting their creators on API tokens.
@@ -165,7 +165,7 @@ agent.run("Go to Hacker News, find the top AI post, and summarize the comments."
 
 ---
 
-## 🧠 The Perception Shift: Death of the DOM
+## The Perception Shift: Death of the DOM
 
 Standard headless tools force agents to parse miles of useless HTML or accessibility nodes. Axon collapses the web into pure semantic reality.
 
@@ -228,7 +228,7 @@ Axon is built for the hostile web. It includes native defenses that standard aut
 <div align="center">
 
 *Axon Project | 2026*  
-*An AI-native browser built with ❤️ for AI agents.*
+*An AI-native browser built with  for AI agents.*
 
 </div>
 
