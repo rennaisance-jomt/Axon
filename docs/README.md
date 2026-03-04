@@ -102,6 +102,6 @@ No hardcoded selectors. No HTML dumps. No human in the loop.
 <div align="center">
 
 *Axon Project | 2026*  
-*An AI-native browser built with ❤️ for AI agents.*
+*An AI-native browser built with  for AI agents.*
 
 </div>
