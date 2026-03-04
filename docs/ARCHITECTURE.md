@@ -245,7 +245,7 @@ axon_snapshot(session="x_main")
   → Returns: "COMPOSE: [e1] Post text ... [a1] Post (IRREVERSIBLE)"
   ↓
 axon_act(ref="e1", action="fill", value="Hello world", session="x_main")
-  → Security: write-reversible ✅
+  → Security: write-reversible Yes
   → Playwright: page.fill('[aria-label="Post text"]', "Hello world")
   → Returns: { success: true }
   ↓
@@ -294,6 +294,6 @@ Axon runs as a local service alongside the agent. No cloud dependency. No data l
 <div align="center">
 
 *Axon Project | 2026*  
-*An AI-native browser built with ❤️ for AI agents.*
+*An AI-native browser built with  for AI agents.*
 
 </div>
