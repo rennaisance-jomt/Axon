@@ -273,11 +273,11 @@ bridge:
 
 The Semantic Bridge Architecture provides a revolutionary approach to web-desktop integration that maintains Axon's core principles while enabling powerful new capabilities. By focusing on intent-based communication rather than direct control, we achieve:
 
-- ✅ Complete security isolation
-- ✅ Lightweight design
-- ✅ Semantic intelligence
-- ✅ Universal compatibility
-- ✅ Scalable architecture
+- Complete security isolation
+- Lightweight design
+- Semantic intelligence
+- Universal compatibility
+- Scalable architecture
 
 This architecture represents a completely novel solution that no existing tool provides, combining the best of web automation with desktop productivity in a secure, intelligent way.
 
