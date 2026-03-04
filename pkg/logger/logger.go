@@ -150,3 +150,4 @@ func Banner() {
 	fmt.Fprintf(stderr, "%s  A browser built for AI that humans can watch.%s\n\n", Gray, Reset)
 }
 
+
