@@ -66,6 +66,7 @@ export interface SnapshotResponse {
   captcha_detected: boolean;
   timestamp?: string;
   token_count: number;
+  content: string;
 }
 
 /**
@@ -88,6 +89,7 @@ export interface ActionResponse {
   message?: string;
   error?: string;
   result?: string;
+  requires_confirm?: boolean;
 }
 
 /**

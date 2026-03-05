@@ -64,6 +64,7 @@ class SnapshotResponse(BaseModel):
     captcha_detected: bool = False
     timestamp: Optional[str] = None
     token_count: int = 0
+    content: Optional[str] = None
     
     class Config:
         populate_by_name = True
@@ -85,6 +86,7 @@ class ActionResponse(BaseModel):
     message: Optional[str] = None
     error: Optional[str] = None
     result: Optional[str] = None
+    requires_confirm: bool = Field(False, alias="requires_confirm")
     
     class Config:
         populate_by_name = True

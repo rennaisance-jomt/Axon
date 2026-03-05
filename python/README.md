@@ -8,30 +8,47 @@ A Python client library for Axon browser automation.
 pip install axon-browser
 ```
 
-## Quick Start
+## Quick Start (On-Demand Engine)
+
+Axon can now automatically manage the browser engine for you. No need to start the `.exe` manually.
 
 ```python
 import asyncio
 from axon import Axon
 
 async def main():
-    async with Axon("http://localhost:8020/api/v1") as axon:
+    # start_engine=True tells the SDK to launch axon.exe automatically
+    async with Axon(start_engine=True) as axon:
         # Create a session
         session = await axon.create_session("mysession")
-        print(f"Created session: {session.session_id}")
         
-        # Navigate to a URL
+        # Navigate
         await axon.navigate("mysession", "https://github.com")
         
-        # Get snapshot
-        snapshot = await axon.snapshot("mysession")
-        print(f"Page title: {snapshot.title}")
-        
-        # Click an element
-        result = await axon.click("mysession", "e1")
+        # use the SMART tool (Intent-based)
+        result = await axon.smart_interact("mysession", "the search input", "fill", "Axon")
         print(f"Action result: {result.success}")
 
 asyncio.run(main())
+```
+
+## Agent Framework Integration (Toolkit)
+
+Axon provides a pre-packaged "Sensory Kit" for agents (like Vamora or LangChain).
+
+```python
+from axon import Axon, AxonToolkit
+
+async with Axon(start_engine=True) as axon:
+    # 1. Initialize the toolkit
+    kit = AxonToolkit(axon, session_id="agent_01")
+    
+    # 2. Get LLM-ready tools
+    tools = await kit.get_tools()
+    
+    # 3. Run a tool from agent's choice
+    output = await kit.run_tool("snapshot", {})
+    print(output)
 ```
 
 ## Configuration

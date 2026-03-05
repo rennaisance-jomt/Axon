@@ -14,6 +14,7 @@ from .models import (
     SessionList,
     APIError,
 )
+from .engine import AxonEngine
 
 
 class Axon:
@@ -49,19 +50,36 @@ class Axon:
         self,
         api_url: Optional[str] = None,
         timeout: float = 30.0,
+        start_engine: bool = False,
+        binary_path: Optional[str] = None,
+        config_path: Optional[str] = None,
     ):
         """
         Initialize the Axon client.
         
         Args:
             api_url: Base URL for the Axon API. 
-                    Defaults to http://localhost:8020/api/v1
-                    Can be set via AXON_API_URL environment variable.
             timeout: Request timeout in seconds.
+            start_engine: If True, automatically start the Axon engine if not running.
+            binary_path: Path to the Axon binary (used if start_engine is True).
+            config_path: Path to the Axon config file (used if start_engine is True).
         """
         self.api_url = api_url or os.getenv("AXON_API_URL", "http://localhost:8020/api/v1")
         self.timeout = aiohttp.ClientTimeout(total=timeout)
         self._session: Optional[aiohttp.ClientSession] = None
+        self.engine: Optional[AxonEngine] = None
+        
+        if start_engine:
+            # Parse port from api_url if possible
+            port = 8020
+            if ":" in self.api_url:
+                try:
+                    port_part = self.api_url.split(":")[-1].split("/")[0]
+                    port = int(port_part)
+                except: pass
+            
+            self.engine = AxonEngine(binary_path=binary_path, config_path=config_path, port=port)
+            self.engine.start()
 
     async def __aenter__(self) -> "Axon":
         """Async context manager entry."""
@@ -72,6 +90,8 @@ class Axon:
         """Async context manager exit."""
         if self._session:
             await self._session.close()
+        if self.engine:
+            self.engine.stop()
 
     async def _request(
         self,
@@ -260,6 +280,36 @@ class Axon:
     ) -> ActionResponse:
         """Select an option."""
         return await self.act(session_id, "select", ref, value=value)
+
+    async def press(
+        self,
+        session_id: str,
+        ref: str,
+        key: str,
+    ) -> ActionResponse:
+        """Press a key."""
+        return await self.act(session_id, "press", ref, value=key)
+
+    # Smart Agent Tools
+    
+    async def smart_interact(
+        self,
+        session_id: str,
+        intent: str,
+        action: str = "click",
+        value: Optional[str] = None,
+        require_confirm: bool = True
+    ) -> ActionResponse:
+        """
+        High-level interaction tool for agents.
+        Automatically resolves intent and handles safety checks.
+        """
+        return await self.find_and_act(
+            session_id=session_id,
+            action=action,
+            intent=intent,
+            value=value
+        )
 
     # Find and Act
 

@@ -8,27 +8,51 @@ A TypeScript-first Node.js client library for Axon browser automation.
 npm install @axon/browser
 ```
 
-## Quick Start
+## Quick Start (On-Demand Engine)
+
+Axon can now automatically manage the browser engine for you. No need to start the `.exe` manually.
 
 ```typescript
 import { Axon } from '@axon/browser';
 
-const axon = new Axon('http://localhost:8020/api/v1');
+// startEngine: true tells the SDK to launch axon.exe automatically
+const axon = new Axon({ startEngine: true });
+
+// Ensure engine is started
+await axon.startEngine();
 
 // Create a session
 const session = await axon.createSession('mysession');
-console.log(`Created session: ${session.session_id}`);
 
-// Navigate to a URL
+// Navigate
 await axon.navigate('mysession', 'https://github.com');
 
-// Get snapshot
-const snapshot = await axon.snapshot('mysession');
-console.log(`Page title: ${snapshot.title}`);
-
-// Click an element
-const result = await axon.click('mysession', 'e1');
+// use the SMART tool (Intent-based)
+const result = await axon.smartInteract('mysession', 'the primary search box', 'fill', 'Axon');
 console.log(`Action result: ${result.success}`);
+
+// Shut down engine when finished
+axon.stopEngine();
+```
+
+## Agent Framework Integration (Toolkit)
+
+Axon provides a "Sensory Kit" (AxonToolkit) that exports tools ready for LLM function calling (Vamora, LangChain).
+
+```typescript
+import { Axon, AxonToolkit } from '@axon/browser';
+
+const axon = new Axon({ startEngine: true });
+await axon.startEngine();
+
+const kit = new AxonToolkit(axon, 'agent_session');
+
+// 1. Get LLM-ready definitions
+const tools = kit.getTools();
+
+// 2. Run tools chosen by the agent
+const output = await kit.runTool('snapshot', {});
+console.log(output);
 ```
 
 ## Configuration

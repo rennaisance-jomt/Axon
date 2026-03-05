@@ -15,8 +15,11 @@ import type {
   ActionType,
   FindAndActRequest,
 } from './types.js';
+import { AxonEngine, EngineOptions } from './engine.js';
+import { AxonToolkit } from './toolkit.js';
 
-export { SessionInfo, CreateSessionResponse, SnapshotResponse, ActionResponse, NavigateResponse, ReplayResponse } from './types';
+export { SessionInfo, CreateSessionResponse, SnapshotResponse, ActionResponse, NavigateResponse, ReplayResponse } from './types.js';
+export { AxonToolkit };
 
 /**
  * Axon API Error
@@ -57,17 +60,52 @@ export class AxonError extends Error {
 export class Axon {
   private apiUrl: string;
   private headers: Headers;
+  private engine: AxonEngine | null = null;
 
   /**
    * Create a new Axon client
    * 
    * @param options - Client configuration
    */
-  constructor(options: AxonOptions = {}) {
+  constructor(options: AxonOptions & EngineOptions & { startEngine?: boolean } = {}) {
     this.apiUrl = options.apiUrl || process.env.AXON_API_URL || 'http://localhost:8020/api/v1';
     this.headers = new Headers({
       'Content-Type': 'application/json',
     });
+
+    if (options.startEngine) {
+      let port = 8020;
+      try {
+        const url = new URL(this.apiUrl);
+        port = parseInt(url.port) || 80;
+      } catch (e) { }
+
+      this.engine = new AxonEngine({
+        binaryPath: options.binaryPath,
+        configPath: options.configPath,
+        port: port,
+      });
+    }
+  }
+
+  /**
+   * Start the underlying Axon engine if configured
+   */
+  async startEngine(): Promise<void> {
+    if (this.engine) {
+      await this.engine.start();
+    } else {
+      throw new Error('Engine management not enabled. Initialize with startEngine: true');
+    }
+  }
+
+  /**
+   * Stop the underlying Axon engine if configured
+   */
+  stopEngine(): void {
+    if (this.engine) {
+      this.engine.stop();
+    }
   }
 
   /**
@@ -308,6 +346,21 @@ export class Axon {
    */
   async status(sessionId: string): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>('GET', `/sessions/${sessionId}/status`);
+  }
+
+  // ================== Smart Agent Tools ==================
+
+  /**
+   * High-level interaction tool for agents.
+   * Automatically resolves intent and handles safety checks.
+   */
+  async smartInteract(
+    sessionId: string,
+    intent: string,
+    action: string = 'click',
+    value?: string
+  ): Promise<ActionResponse> {
+    return this.findAndAct(sessionId, action, intent, value);
   }
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@rennaisance-jomt/axon-browser",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
@@ -8,8 +8,12 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "files": [
+    "dist",
+    "bin"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"const fs=require('fs'); if(fs.existsSync('bin')){fs.cpSync('bin', 'dist/bin', {recursive:true})}\"",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "lint": "eslint src --ext .ts"
   },
