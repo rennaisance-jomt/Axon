@@ -72,6 +72,8 @@ func main() {
 		handleAct()
 	case "session":
 		handleSession()
+	case "vault":
+		handleVault()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printUsage()
@@ -90,12 +92,21 @@ Commands:
   navigate <session> <url>        Navigate to a URL
   act <session> <action> [opts]   Perform an action on an element
   session <subcommand>            Manage sessions
+  vault <subcommand>              Manage the Intelligence Vault
 
 Session subcommands:
   session list                    List all sessions
   session create <id>             Create a new session
   session delete <id>             Delete a session
   session info <id>               Get session details
+
+Vault subcommands:
+  vault list                      List all secrets
+  vault add <name> <url>          Add a secret to the vault
+    --user <username>             Optional username
+    --pass <password>             Optional password
+    --value <value>               Optional generic secret value
+  vault delete <name>             Delete a secret from the vault
 
 Options:
   --api-url <url>                 Override API URL (or use AXON_API_URL env var)
@@ -393,6 +404,127 @@ func printResponse(resp *http.Response) {
 		// Print error
 		fmt.Printf("Error (Status %d): %s\n", resp.StatusCode, string(body))
 		os.Exit(1)
+	}
+}
+
+func handleVault() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: axon vault <subcommand>")
+		fmt.Println("Subcommands: list, add, delete")
+		os.Exit(1)
+	}
+
+	subcommand := os.Args[2]
+	os.Args = os.Args[2:]
+
+	switch subcommand {
+	case "list":
+		handleVaultList()
+	case "add":
+		handleVaultAdd()
+	case "delete":
+		handleVaultDelete()
+	default:
+		fmt.Printf("Unknown subcommand: %s\n", subcommand)
+		fmt.Println("Usage: axon vault <subcommand>")
+		fmt.Println("Subcommands: list, add, delete")
+		os.Exit(1)
+	}
+}
+
+func handleVaultList() {
+	flag := flag.NewFlagSet("vault list", flag.ExitOnError)
+	apiURLFlag := flag.String("api-url", apiURL, "API URL")
+	flag.Parse(os.Args[2:])
+	*apiURLFlag = getAPIURL(*apiURLFlag)
+
+	resp, err := http.Get(fmt.Sprintf("%s/vault/secrets", *apiURLFlag))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var prettyJSON bytes.Buffer
+	if err := json.Indent(&prettyJSON, body, "", "  "); err != nil {
+		fmt.Println(string(body))
+		return
+	}
+	fmt.Println(prettyJSON.String())
+}
+
+func handleVaultAdd() {
+	flag := flag.NewFlagSet("vault add", flag.ExitOnError)
+	name := flag.String("name", "", "Secret name")
+	url := flag.String("url", "", "Target URL/Domain")
+	username := flag.String("user", "", "Username")
+	password := flag.String("pass", "", "Password")
+	value := flag.String("value", "", "Generic secret value")
+	apiURLFlag := flag.String("api-url", apiURL, "API URL")
+	flag.Parse(os.Args[2:])
+
+	// Positional arguments support: axon vault add <name> <url>
+	if *name == "" && len(flag.Args()) > 0 {
+		*name = flag.Args()[0]
+	}
+	if *url == "" && len(flag.Args()) > 1 {
+		*url = flag.Args()[1]
+	}
+
+	if *name == "" || *url == "" {
+		fmt.Println("Usage: axon vault add <name> <url> [--user <user>] [--pass <pass>] [--value <val>]")
+		os.Exit(1)
+	}
+
+	*apiURLFlag = getAPIURL(*apiURLFlag)
+	reqBody := map[string]interface{}{
+		"name":     *name,
+		"url":      *url,
+		"username": *username,
+		"password": *password,
+		"value":    *value,
+	}
+
+	resp, err := http.Post(fmt.Sprintf("%s/vault/secrets", *apiURLFlag), "application/json", bytes.NewBuffer(mustMarshal(reqBody)))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	printResponse(resp)
+}
+
+func handleVaultDelete() {
+	flag := flag.NewFlagSet("vault delete", flag.ExitOnError)
+	apiURLFlag := flag.String("api-url", apiURL, "API URL")
+	flag.Parse(os.Args[2:])
+	*apiURLFlag = getAPIURL(*apiURLFlag)
+
+	if len(flag.Args()) < 1 {
+		fmt.Println("Usage: axon vault delete <name>")
+		os.Exit(1)
+	}
+
+	name := flag.Args()[0]
+	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/vault/secrets/%s", *apiURLFlag, name), nil)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 204 || resp.StatusCode == 200 {
+		fmt.Printf("Secret '%s' deleted successfully\n", name)
+	} else {
+		printResponse(resp)
 	}
 }
 

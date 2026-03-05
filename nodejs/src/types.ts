@@ -52,6 +52,7 @@ export interface SnapshotElement {
   intent?: string;
   reversible?: string;
   related_ref?: string;
+  vault_suggestion?: string;
 }
 
 /**

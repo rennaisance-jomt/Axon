@@ -55,6 +55,19 @@ class AxonToolkit:
                     "type": "object",
                     "properties": {}
                 }
+            },
+            {
+                "name": "vault_fill",
+                "description": "Fill a field using a protected secret from the Intelligence Vault. Use this for sensitive logins.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "intent": {"type": "string", "description": "Description of the element to fill (e.g. 'password field')"},
+                        "secret_name": {"type": "string", "description": "Name of the secret in the vault"},
+                        "field": {"type": "string", "enum": ["username", "password", "value"], "description": "Which field to inject"}
+                    },
+                    "required": ["intent", "secret_name"]
+                }
             }
         ]
 
@@ -84,5 +97,18 @@ class AxonToolkit:
         elif tool_name == "wait_for_stability":
             await self.axon.status(self.session_id) # Getting status triggers internal wait/sync
             return "Page is now stable."
+        
+        elif tool_name == "vault_fill":
+            # First find the element by intent
+            snap = await self.axon.snapshot(self.session_id)
+            # Simplistic find logic for toolkit (In real usage, we should use a better matcher)
+            # But for now, we'll try to use smart_interact's find_and_act with the vault ref
+            res = await self.axon.find_and_act(
+                self.session_id,
+                "fill",
+                args["intent"],
+                value=f"@vault:{args['secret_name']}:{args.get('field', 'password')}"
+            )
+            return f"Successfully injected secret '{args['secret_name']}' into '{args['intent']}'."
             
         return f"Tool {tool_name} not found."

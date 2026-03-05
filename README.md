@@ -208,7 +208,18 @@ Axon is built for the hostile web. It includes native defenses that standard aut
 - **SSRF Guard**: Pre-navigation validation to prevent internal network scanning.
 - **Action Reversibility**: Actions like "Delete Account" or "Post" are classified as **Irreversible** and require explicit "confirm: true".
 - **Prompt Injection Scanner**: Detects malicious instructions hidden in webpage text before the agent parses it.
+- **Secure Intelligence Vault**: Domain-bound credential storage that prevents agents from leaking secrets to unauthorized origins.
 - **Cryptographic Audit**: Every action is hashed into an append-only, tamper-evident ledger.
+
+---
+
+## The Secure Intelligence Vault (BadgerVault)
+
+Axon includes a military-grade secret vault built directly into the engine. Unlike standard browsers where agents might "see" and "leak" credentials, Axon's vault ensures secrets are only injected into the correct domains.
+
+- **Domain Binding**: A secret for `github.com` cannot be used on `evil-phish.com`, even if the agent is tricked.
+- **Physical Masking**: Credentials injected into the DOM are physically masked (rendered as `******`) from visual snapshots and stream replays.
+- **Encrypted at Rest**: All secrets are stored in an AES-256-GCM encrypted local database.
 
 ---
 

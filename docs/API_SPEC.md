@@ -41,6 +41,9 @@ Currently no authentication. For production, use:
 | GET | `/api/v1/sessions/{id}/cookies` | Get cookies |
 | POST | `/api/v1/sessions/{id}/cookies` | Set cookies |
 | GET | `/api/v1/sessions/{id}/replay` | Get session replay |
+| POST | `/api/v1/vault/secrets` | Add secret to vault |
+| GET | `/api/v1/vault/secrets` | List vault secrets |
+| DELETE | `/api/v1/vault/secrets/{name}` | Delete vault secret |
 | GET | `/api/v1/audit` | Get audit logs |
 
 ---
@@ -313,6 +316,53 @@ paths:
               schema:
                 $ref: '#/components/schemas/WaitResponse'
 
+  /api/v1/vault/secrets:
+    get:
+      summary: List all secrets in the vault
+      operationId: listSecrets
+      tags:
+        - Vault
+      responses:
+        '200':
+          description: List of secrets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Secret'
+
+    post:
+      summary: Add a secret to the vault
+      operationId: addSecret
+      tags:
+        - Vault
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Secret'
+      responses:
+        '201':
+          description: Secret added
+
+  /api/v1/vault/secrets/{name}:
+    delete:
+      summary: Delete a secret by name
+      operationId: deleteSecret
+      tags:
+        - Vault
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Secret deleted
+
   /api/v1/audit:
     get:
       summary: Get audit logs
@@ -383,6 +433,28 @@ components:
           type: string
         auth_state:
           type: string
+
+    Secret:
+      type: object
+      required:
+        - name
+        - domain
+      properties:
+        name:
+          type: string
+        domain:
+          type: string
+          description: Base domain (eTLD+1) binding
+        username:
+          type: string
+        password:
+          type: string
+        value:
+          type: string
+        labels:
+          type: array
+          items:
+            type: string
 
     SnapshotElement:
       type: object

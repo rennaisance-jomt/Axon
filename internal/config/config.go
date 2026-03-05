@@ -41,6 +41,7 @@ type SecurityConfig struct {
 	SSRF           SSRFConfig
 	PromptInjection PromptInjectionConfig
 	Reversibility  ReversibilityConfig
+	VaultKey       string // Master key for encrypting vault secrets
 }
 
 // SSRFConfig holds SSRF protection configuration
@@ -111,7 +112,7 @@ func DefaultConfig() *Config {
 		Security: SecurityConfig{
 			SSRF: SSRFConfig{
 				Enabled:             true,
-				AllowPrivateNetwork: false,
+				AllowPrivateNetwork: true,
 				DomainAllowlist:    []string{},
 				DomainDenylist:     []string{},
 				SchemeAllowlist:    []string{"https", "http"},

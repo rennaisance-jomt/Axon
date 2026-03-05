@@ -92,8 +92,10 @@ func NewPool(cfg *config.BrowserConfig) (*Pool, error) {
 // initBrowser creates the single browser daemon
 func (p *Pool) initBrowser() error {
 	// Set up launcher with performance optimizations
+	// Leakless(true) ensures Chromium is properly terminated when connection closes
+	// This is critical for Windows where browser processes can strand otherwise
 	l := launcher.New().
-		Leakless(false).
+		Leakless(true).
 		Set("--no-first-run").
 		Set("--no-default-browser-check").
 		Set("--disable-background-timer-throttling").
@@ -224,12 +226,15 @@ func (p *Pool) Release(ctx *BrowserContext) {
 		return
 	}
 
+	logger.System("POOL_RELEASE: Releasing context %s (status: %s)", ctx.ID, ctx.Status)
+
 	atomic.AddInt32(&p.activeCount, -1)
 
 	ctx.mu.Lock()
 	if ctx.Status != ContextStatusHealthy {
 		ctx.mu.Unlock()
 		// Don't return unhealthy contexts to pool
+		logger.System("POOL_RELEASE: Context %s is unhealthy, destroying", ctx.ID)
 		go p.destroyContext(ctx)
 		return
 	}
@@ -239,8 +244,10 @@ func (p *Pool) Release(ctx *BrowserContext) {
 	// Return to available pool
 	select {
 	case p.availableCh <- ctx:
+		logger.System("POOL_RELEASE: Context %s returned to available pool", ctx.ID)
 	default:
 		// Channel full, destroy context
+		logger.System("POOL_RELEASE: Channel full, destroying context %s", ctx.ID)
 		go p.destroyContext(ctx)
 	}
 }
@@ -266,8 +273,11 @@ func (p *Pool) isContextHealthy(ctx *BrowserContext) bool {
 
 // destroyContext permanently destroys a context
 func (p *Pool) destroyContext(ctx *BrowserContext) {
+	logger.System("POOL_DESTROY: Starting destruction of context %s", ctx.ID)
+	
 	ctx.mu.Lock()
 	if ctx.Status == ContextStatusClosed {
+		logger.System("POOL_DESTROY: Context %s already closed", ctx.ID)
 		ctx.mu.Unlock()
 		return
 	}
@@ -276,6 +286,7 @@ func (p *Pool) destroyContext(ctx *BrowserContext) {
 	ctx.mu.Unlock()
 
 	if browserCtx != nil {
+		logger.System("POOL_DESTROY: Calling Close() on context %s", ctx.ID)
 		browserCtx.Close()
 	}
 
@@ -283,7 +294,7 @@ func (p *Pool) destroyContext(ctx *BrowserContext) {
 	delete(p.contexts, ctx.ID)
 	p.mu.Unlock()
 
-	logger.Debug("Destroyed browser context: %s", ctx.ID)
+	logger.System("POOL_DESTROY: Context %s destroyed successfully", ctx.ID)
 }
 
 // startHealthMonitor starts the background health monitoring
@@ -403,29 +414,42 @@ func (p *Pool) cleanupIdleContexts() {
 
 // Close closes the browser pool and all contexts
 func (p *Pool) Close() error {
+	logger.System("POOL_CLOSE: Starting pool close procedure...")
+	
 	p.mu.Lock()
 	select {
 	case <-p.ctx.Done():
 		p.mu.Unlock()
+		logger.System("POOL_CLOSE: Pool already closed, returning")
 		return nil
 	default:
 	}
 	p.cancel()
 	p.mu.Unlock()
 
+	logger.System("POOL_CLOSE: Waiting for background goroutines to finish...")
 	p.wg.Wait()
+	logger.System("POOL_CLOSE: Background goroutines finished")
 
 	// Close all contexts
-	p.mu.Lock()
+	p.mu.RLock()
 	contexts := make([]*BrowserContext, 0, len(p.contexts))
 	for _, ctx := range p.contexts {
 		contexts = append(contexts, ctx)
 	}
-	p.mu.Unlock()
+	p.mu.RUnlock()
 
+	logger.System("POOL_CLOSE: Closing %d contexts...", len(contexts))
 	for _, ctx := range contexts {
 		ctx.mu.Lock()
-		if ctx.Context != nil && ctx.Status != ContextStatusClosed {
+		// Skip if already closed (might have been closed by session.Delete())
+		if ctx.Status == ContextStatusClosed {
+			ctx.mu.Unlock()
+			logger.System("POOL_CLOSE: Context %s already closed, skipping", ctx.ID)
+			continue
+		}
+		if ctx.Context != nil {
+			logger.System("POOL_CLOSE: Closing context %s", ctx.ID)
 			ctx.Context.Close()
 		}
 		ctx.Status = ContextStatusClosed
@@ -435,17 +459,101 @@ func (p *Pool) Close() error {
 	// Close browser daemon
 	p.mu.Lock()
 	if p.browser != nil {
+		logger.System("POOL_CLOSE: Closing browser daemon...")
 		p.browser.Close()
 		p.browser = nil
 	}
 	if p.launcher != nil {
+		logger.System("POOL_CLOSE: Cleaning up launcher...")
 		p.launcher.Cleanup()
 		p.launcher = nil
 	}
 	p.mu.Unlock()
 
-	logger.Success("Browser pool closed")
+	logger.System("POOL_CLOSE: Browser pool closed successfully")
 	return nil
+}
+
+// CloseSync synchronously closes the browser pool with timeout and monitoring
+func (p *Pool) CloseSync() error {
+	logger.System("POOL_CLOSE_SYNC: Starting synchronous close with monitoring...")
+	
+	start := time.Now()
+	
+	// Get initial context count
+	initialCount := p.GetContextCount()
+	logger.System("POOL_CLOSE_SYNC: Initial context count: %d", initialCount)
+	
+	// Perform standard close
+	if err := p.Close(); err != nil {
+		return fmt.Errorf("pool close failed: %w", err)
+	}
+	
+	// Wait for contexts to be fully cleaned up with timeout
+	timeout := 10 * time.Second
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ticker.C:
+			currentCount := p.GetContextCount()
+			if currentCount == 0 {
+				duration := time.Since(start)
+				logger.System("POOL_CLOSE_SYNC: All contexts cleaned up in %v", duration)
+				
+				// Even if all contexts are cleaned up, run process monitor to catch any orphaned processes
+				logger.System("POOL_CLOSE_SYNC: Running orphaned process check...")
+				monitor := NewProcessMonitor()
+				if err := monitor.CleanupOrphanedProcesses(); err != nil {
+					logger.Warn("POOL_CLOSE_SYNC: Error during orphaned process cleanup: %v", err)
+				}
+				
+				return nil
+			}
+			logger.System("POOL_CLOSE_SYNC: Waiting for %d contexts to be cleaned up...", currentCount)
+			
+		case <-time.After(timeout):
+			finalCount := p.GetContextCount()
+			logger.Warn("POOL_CLOSE_SYNC: Timeout after %v, %d contexts still exist", timeout, finalCount)
+			
+			// Force cleanup any remaining contexts
+			p.forceCleanupRemainingContexts()
+			
+			// Even with timeout, still run process monitor
+			logger.System("POOL_CLOSE_SYNC: Running orphaned process cleanup after timeout...")
+			monitor := NewProcessMonitor()
+			if err := monitor.CleanupOrphanedProcesses(); err != nil {
+				logger.Warn("POOL_CLOSE_SYNC: Error during orphaned process cleanup: %v", err)
+			}
+			
+			return fmt.Errorf("timeout waiting for %d contexts to close", finalCount)
+		}
+	}
+}
+
+// forceCleanupRemainingContexts forcefully cleans up any remaining contexts
+func (p *Pool) forceCleanupRemainingContexts() {
+	logger.System("POOL_CLOSE_SYNC: Force cleaning up remaining contexts...")
+	
+	p.mu.RLock()
+	contexts := make([]*BrowserContext, 0, len(p.contexts))
+	for _, ctx := range p.contexts {
+		contexts = append(contexts, ctx)
+	}
+	p.mu.RUnlock()
+	
+	for _, ctx := range contexts {
+		ctx.mu.Lock()
+		if ctx.Status != ContextStatusClosed {
+			logger.System("POOL_CLOSE_SYNC: Force closing context %s", ctx.ID)
+			if ctx.Context != nil {
+				ctx.Context.Close()
+			}
+			ctx.Status = ContextStatusClosed
+		}
+		ctx.mu.Unlock()
+	}
 }
 
 // Stats returns pool statistics

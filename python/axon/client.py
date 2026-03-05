@@ -3,6 +3,7 @@
 import os
 from typing import Optional
 import aiohttp
+from urllib.parse import urlsplit
 
 from .models import (
     SessionInfo,
@@ -88,10 +89,74 @@ class Axon:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """Async context manager exit."""
+        if self.engine:
+            # Try multiple endpoint paths to ensure we hit one that works
+            endpoints = [
+                "/internal/shutdown/sync",
+                "/api/v1/internal/shutdown/sync",
+                "/internal/shutdown",
+                "/api/v1/internal/shutdown"
+            ]
+            
+            success = False
+            for endpoint in endpoints:
+                try:
+                    print(f"Sending {endpoint} request to clean up Chromium...")
+                    result = await self._request("POST", endpoint)
+                    print(f"Shutdown successful via {endpoint}: {result}")
+                    success = True
+                    break
+                except Exception as e:
+                    print(f"Endpoint {endpoint} failed: {e}")
+            
+            # Even if all API endpoints fail, add an extra sleep to allow cleanup
+            import asyncio
+            if success:
+                # Longer wait when successful to ensure proper cleanup
+                await asyncio.sleep(2.0)
+            else:
+                # If all endpoints failed, wait even longer
+                print("All shutdown endpoints failed. Waiting for natural process termination...")
+                await asyncio.sleep(3.0)
+                
+            # Additional direct cleanup attempt using system commands
+            self._direct_cleanup_chromium()
+
         if self._session:
             await self._session.close()
+            
         if self.engine:
             self.engine.stop()
+            
+    def _direct_cleanup_chromium(self):
+        """Direct system-level cleanup of Chrome processes as a last resort."""
+        import platform
+        import subprocess
+        import os
+        
+        print("Performing direct system-level Chrome process cleanup...")
+        
+        try:
+            system = platform.system()
+            if system == "Windows":
+                # Windows cleanup
+                subprocess.run(["taskkill", "/F", "/IM", "chrome.exe", "/T"], 
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+                subprocess.run(["taskkill", "/F", "/IM", "chromium.exe", "/T"], 
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+                # Also try wmic for stubborn processes
+                subprocess.run(["wmic", "process", "where", "name like '%chrome%'", "delete"], 
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            elif system == "Darwin":  # macOS
+                subprocess.run(["pkill", "-9", "Chrome"], 
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            elif system == "Linux":
+                subprocess.run(["pkill", "-9", "-f", "chrom"], 
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            
+            print("Direct cleanup completed")
+        except Exception as e:
+            print(f"Error during direct cleanup: {e}")
 
     async def _request(
         self,
@@ -100,7 +165,18 @@ class Axon:
         **kwargs,
     ) -> dict:
         """Make an API request."""
-        url = f"{self.api_url}{path}"
+        # Normalize URL building so we don't accidentally produce duplicated
+        # paths like /api/v1/api/v1/... when callers provide absolute API paths.
+        parsed = urlsplit(self.api_url)
+        base_origin = f"{parsed.scheme}://{parsed.netloc}"
+
+        if path.startswith("/internal/") or path.startswith("/api/"):
+            # Absolute service path (already rooted at server origin)
+            url = f"{base_origin}{path}"
+        else:
+            # Relative API path under configured api_url
+            url = f"{self.api_url}{path}"
+            
         async with self._session.request(method, url, **kwargs) as response:
             if response.status >= 400:
                 error_text = await response.text()
@@ -267,6 +343,64 @@ class Axon:
     ) -> ActionResponse:
         """Fill an input field."""
         return await self.act(session_id, "fill", ref, value=value)
+
+    async def vault_fill(
+        self,
+        session_id: str,
+        ref: str,
+        secret_name: str,
+        field: str = "password",
+    ) -> ActionResponse:
+        """
+        Fill an input field using a secret from the Intelligence Vault.
+        
+        Args:
+            session_id: The session ID.
+            ref: Element reference ID.
+            secret_name: Name of the secret in the vault.
+            field: Field name to inject (username, password, value).
+            
+        Returns:
+            ActionResponse with result.
+        """
+        vault_ref = f"@vault:{secret_name}:{field}"
+        return await self.fill(session_id, ref, vault_ref)
+
+    # Vault Management
+
+    async def add_secret(
+        self,
+        name: str,
+        value: str,
+        url: str,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        labels: Optional[list] = None,
+    ) -> bool:
+        """
+        Add a secret to the Intelligence Vault.
+        
+        Args:
+            name: Friendly name for the secret.
+            value: Secret value (for generic secrets).
+            url: Domain/URL the secret is bound to.
+            username: Optional username.
+            password: Optional password.
+            labels: Optional labels for categorization.
+            
+        Returns:
+            True if successful.
+        """
+        data = {
+            "name": name,
+            "value": value,
+            "url": url,
+            "username": username,
+            "password": password,
+            "labels": labels or [],
+        }
+        result = await self._request("POST", "/vault/secrets", json=data)
+        return result.get("success", False)
 
     async def hover(self, session_id: str, ref: str) -> ActionResponse:
         """Hover over an element."""

@@ -49,6 +49,7 @@ class SnapshotElement(BaseModel):
     intent: Optional[str] = None
     reversible: Optional[str] = None
     related_ref: Optional[str] = Field(None, alias="related_ref")
+    vault_suggestion: Optional[str] = None
     
     class Config:
         populate_by_name = True
@@ -81,8 +82,8 @@ class ActionRequest(BaseModel):
 class ActionResponse(BaseModel):
     """Response from performing an action."""
     success: bool
-    session_id: str = Field(alias="session_id")
-    action: str
+    session_id: Optional[str] = Field(default=None, alias="session_id")
+    action: Optional[str] = None
     message: Optional[str] = None
     error: Optional[str] = None
     result: Optional[str] = None
@@ -100,7 +101,7 @@ class NavigateRequest(BaseModel):
 
 class NavigateResponse(BaseModel):
     """Response from navigating."""
-    session_id: str = Field(alias="session_id")
+    session_id: Optional[str] = Field(default=None, alias="session_id")
     url: str
     success: bool
     title: Optional[str] = None

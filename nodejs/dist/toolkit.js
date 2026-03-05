@@ -1,31 +1,17 @@
-import { Axon } from './index.js';
-
-export interface ToolDefinition {
-    name: string;
-    description: string;
-    parameters: {
-        type: 'object';
-        properties: Record<string, any>;
-        required?: string[];
-    };
-}
-
 /**
  * A ready-to-use sensory kit for AI agents (Vamora, LangChain, etc.)
  */
 export class AxonToolkit {
-    private axon: Axon;
-    private sessionId: string;
-
-    constructor(axonClient: Axon, sessionId: string = 'default') {
+    axon;
+    sessionId;
+    constructor(axonClient, sessionId = 'default') {
         this.axon = axonClient;
         this.sessionId = sessionId;
     }
-
     /**
      * Returns a list of tool definitions in OpenAI/LLM-friendly format.
      */
-    getTools(): ToolDefinition[] {
+    getTools() {
         return [
             {
                 name: 'navigate',
@@ -66,61 +52,29 @@ export class AxonToolkit {
                     type: 'object',
                     properties: {}
                 }
-            },
-            {
-                name: "vault_fill",
-                description: "Fill a field using a protected secret from the Intelligence Vault. Use this for sensitive logins.",
-                parameters: {
-                    type: "object",
-                    properties: {
-                        intent: { type: "string", description: "Description of the element to fill (e.g. 'password field')" },
-                        secret_name: { type: "string", description: "Name of the secret in the vault" },
-                        field: { type: "string", enum: ["username", "password", "value"], description: "Which field to inject" }
-                    },
-                    required: ["intent", "secret_name"]
-                }
             }
         ];
     }
-
     /**
      * Executes a tool and returns the result as a string for the agent.
      */
-    async runTool(toolName: string, args: any): Promise<string> {
+    async runTool(toolName, args) {
         switch (toolName) {
             case 'navigate':
                 await this.axon.navigate(this.sessionId, args.url);
                 return `Successfully navigated to ${args.url}`;
-
             case 'snapshot':
                 const snap = await this.axon.snapshot(this.sessionId);
                 return `Page: ${snap.title}\nContent:\n${snap.content}`;
-
             case 'smart_interact':
-                const res = await this.axon.smartInteract(
-                    this.sessionId,
-                    args.intent,
-                    args.action,
-                    args.value
-                );
+                const res = await this.axon.smartInteract(this.sessionId, args.intent, args.action, args.value);
                 if (res.requires_confirm) {
                     return `ACTION BLOCKED: This is an irreversible action. Set 'confirm: true' to proceed with: ${res.message}`;
                 }
                 return `Action '${args.action}' on '${args.intent}' was successful.`;
-
             case 'wait_for_stability':
                 await this.axon.status(this.sessionId);
                 return 'Page is now stable.';
-
-            case 'vault_fill':
-                await this.axon.findAndAct(
-                    this.sessionId,
-                    "fill",
-                    args.intent,
-                    `@vault:${args.secret_name}:${args.field || 'password'}`
-                );
-                return `Successfully injected secret '${args.secret_name}' into '${args.intent}'.`;
-
             default:
                 return `Tool ${toolName} not found.`;
         }

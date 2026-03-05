@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/input"
 	"github.com/go-rod/rod/lib/proto"
+	"github.com/rennaisance-jomt/axon/internal/security"
 	"github.com/rennaisance-jomt/axon/pkg/logger"
 )
 
@@ -54,6 +56,7 @@ type Session struct {
 	TabManager     *TabManager          `json:"-"` // Multi-tab management
 	Streamer       *Streamer            `json:"-"` // Sprint 27: Physical screencast streamer
 	ActionHistory  []ActionRecord       `json:"action_history,omitempty"` // Sprint 27.3: Path visualization
+	Vault          *security.Vault      `json:"-"` // Sprint 28: Intelligence Vault
 	mu            sync.RWMutex
 }
 
@@ -175,10 +178,11 @@ type SessionManager struct {
 	maxSessionLife time.Duration
 	lifecycleCh   chan string // channel for lifecycle events
 	checkpointMgr *CheckpointManager // Sprint 18 & 19: For checkpoints and recovery
+	vault         *security.Vault      // Sprint 28: Intelligence Vault
 }
 
 // NewSessionManager creates a new session manager
-func NewSessionManager(pool *Pool, maxSessionLife time.Duration) *SessionManager {
+func NewSessionManager(pool *Pool, maxSessionLife time.Duration, vault *security.Vault) *SessionManager {
 	if maxSessionLife <= 0 {
 		maxSessionLife = 30 * time.Minute // default
 	}
@@ -187,12 +191,13 @@ func NewSessionManager(pool *Pool, maxSessionLife time.Duration) *SessionManager
 		pool:          pool,
 		maxSessionLife: maxSessionLife,
 		lifecycleCh:   make(chan string, 100),
+		vault:         vault,
 	}
 }
 
 // NewSessionManagerWithRecovery creates a new session manager with checkpoint and recovery support
-func NewSessionManagerWithRecovery(pool *Pool, maxSessionLife time.Duration, checkpointMgr *CheckpointManager) *SessionManager {
-	sm := NewSessionManager(pool, maxSessionLife)
+func NewSessionManagerWithRecovery(pool *Pool, maxSessionLife time.Duration, checkpointMgr *CheckpointManager, vault *security.Vault) *SessionManager {
+	sm := NewSessionManager(pool, maxSessionLife, vault)
 	sm.checkpointMgr = checkpointMgr
 	return sm
 }
@@ -270,6 +275,7 @@ func (sm *SessionManager) Create(id string, profile string) (*Session, error) {
 		Page:          page,
 		KnownElements: make(map[string]string),
 		LastElements:  make([]Element, 0),
+		Vault:         sm.vault,
 	}
 
 	// Sprint 18 & 19: Initialize recovery manager if checkpoint manager exists
@@ -343,21 +349,33 @@ func (sm *SessionManager) Delete(id string) error {
 		return fmt.Errorf("session %s not found", id)
 	}
 
+	logger.System("SESSION_DELETE: Starting deletion of session %s", id)
+
 	// Close the page first
 	if session.Page != nil {
+		logger.System("SESSION_DELETE: Closing page for session %s", id)
 		session.Page.Close()
 	}
 
 	// Close the browser context (incognito)
 	if session.Context != nil {
+		logger.System("SESSION_DELETE: Closing browser context for session %s", id)
 		session.Context.Close()
 	}
 
-	// Release context back to pool
+	// Immediately destroy the context instead of releasing it back to pool
+	// This ensures Chromium is properly terminated immediately
 	if session.WorkerID != "" {
+		logger.System("SESSION_DELETE: Immediately destroying context %s", session.WorkerID)
 		browserCtx, err := sm.pool.GetContext(session.WorkerID)
 		if err == nil {
-			sm.pool.Release(browserCtx)
+			// Mark as closed and immediately destroy
+			browserCtx.mu.Lock()
+			browserCtx.Status = ContextStatusClosed
+			browserCtx.mu.Unlock()
+			
+			// Call destroy directly to ensure immediate cleanup
+			sm.pool.destroyContext(browserCtx)
 		}
 	}
 
@@ -557,23 +575,110 @@ func (s *Session) Fill(selector string, value string) error {
 		return err
 	}
 
-	logger.Action("[%s] Filling element %s with value", s.ID, selector)
-	
+	// Sprint 28: Intelligence Vault Injection
+	if strings.HasPrefix(value, "@vault:") {
+		parts := strings.Split(strings.TrimPrefix(value, "@vault:"), ":")
+		secretName := parts[0]
+		fieldName := "password" // default
+		if len(parts) > 1 {
+			fieldName = parts[1]
+		}
+
+		logger.Action("[%s] Injecting secret '%s' (field: %s) from vault into %s", s.ID, secretName, fieldName, selector)
+
+		if s.Vault == nil {
+			return fmt.Errorf("vault not initialized for this session")
+		}
+
+		secret, err := s.Vault.GetSecret(secretName, s.URL)
+		if err != nil {
+			logger.Error("[%s] Vault injection failed: %v", s.ID, err)
+			return fmt.Errorf("vault access denied: %w", err)
+		}
+
+		// Inject the correct field
+		switch strings.ToLower(fieldName) {
+		case "username":
+			value = secret.Username
+		case "password":
+			value = secret.Password
+		case "value":
+			value = secret.Value
+		default:
+			if val, ok := secret.Metadata[fieldName]; ok {
+				value = val
+			} else {
+				return fmt.Errorf("field '%s' not found in secret '%s'", fieldName, secretName)
+			}
+		}
+
+		// Sprint 28: Security Guards
+		// The correct rod way to pass an element to page-level JS is via JSArgs.
+		// When a JSArgs entry is *proto.RuntimeRemoteObject, rod passes it through
+		// CDP's callFunctionOn JSArgs, and it arrives as the first parameter in JS.
+		// This works regardless of how the element handle was obtained (CSS, JS eval,
+		// or BackendNodeID), because we're operating at the CDP object level.
+		if element.Object != nil {
+			// Anti-Phishing Guard
+			phishingRes, phishErr := s.Page.Evaluate(rod.Eval(`(el) => {
+				if (!el) return "";
+				var form = el.closest('form');
+				return form ? form.action : "";
+			}`, element.Object))
+
+			if phishErr == nil && phishingRes != nil {
+				actionURL := phishingRes.Value.Str()
+				if actionURL != "" {
+					if parsedAction, parseErr := url.Parse(actionURL); parseErr == nil && parsedAction.Host != "" {
+						actionBase := security.GetBaseDomain(actionURL)
+						currentBase := security.GetBaseDomain(s.URL)
+						if actionBase != currentBase {
+							logger.Error("[%s] Phishing Guard Blocked Injection: form action '%s' is cross-origin vs page '%s'", s.ID, actionURL, s.URL)
+							s.recordAction("fill", selector, "[BLOCKED_BY_GUARD]", "failed", "untrusted cross-origin target")
+							return fmt.Errorf("phishing protection triggered: form submits to untrusted cross-origin domain %s", actionBase)
+						}
+					}
+				}
+			}
+
+			// DOM Masking: protect against session replay leaks by changing
+			// the input type to 'password' and marking it with data-axon-masked.
+			_, _ = s.Page.Evaluate(rod.Eval(`(el) => {
+				if (el && el.tagName === 'INPUT' && el.type !== 'password') {
+					el.setAttribute('data-axon-masked', 'true');
+					el.type = 'password';
+				}
+			}`, element.Object))
+		} else {
+			logger.Warn("[%s] Vault injection: element.Object is nil, skipping security guards", s.ID)
+		}
+
+		// Note: We don't record the actual secret value in action history
+		s.recordAction("fill", selector, "[SECRET_INJECTED]", "success", "")
+	} else {
+		logger.Action("[%s] Filling element %s with value", s.ID, selector)
+		s.recordAction("fill", selector, value, "success", "")
+	}
+
 	// Sprint 27.6: Use Input for standard rod.Element behavior.
 	err = element.Timeout(5 * time.Second).Input(value)
 
-	status := "success"
-	errStr := ""
 	if err != nil {
-		status = "failed"
-		errStr = err.Error()
+		logger.Error("[%s] Fill failed: %v", s.ID, err)
+		// Update status if it was success before
+		for i := len(s.ActionHistory) - 1; i >= 0; i-- {
+			if s.ActionHistory[i].Ref == selector && s.ActionHistory[i].Type == "fill" {
+				s.ActionHistory[i].Status = "failed"
+				s.ActionHistory[i].Error = err.Error()
+				break
+			}
+		}
 	}
 
 	s.mu.Lock()
 	s.LastAction = time.Now()
 	s.mu.Unlock()
 
-	s.recordAction("fill", selector, value, status, errStr)
 	return err
 }
 

@@ -159,6 +159,135 @@ func (s *Server) setupRoutes() {
 	// API v1
 	api := s.app.Group("/api/v1")
 
+	// Internal control (for SDK orchestration)
+	// NOTE: Register endpoints in multiple ways to ensure they're always accessible
+	
+	// 1. Direct route registration without prefix
+	s.app.Post("/internal/shutdown", func(c *fiber.Ctx) error {
+		logger.System("SERVER_SHUTDOWN: Received graceful shutdown signal, terminating Chromium instances...")
+		if s.pool != nil {
+			logger.System("SERVER_SHUTDOWN: Calling pool.Close()...")
+			// Trigger the Rod browser leakless shutdown mechanism
+			s.pool.Close()
+			logger.System("SERVER_SHUTDOWN: pool.Close() returned")
+		}
+		logger.System("SERVER_SHUTDOWN: Shutdown complete, sending response")
+		return c.JSON(fiber.Map{
+			"success": true,
+			"message": "Shutdown initiated"
+		})
+	})
+	
+	// 2. Direct route for synchronous shutdown
+	s.app.Post("/internal/shutdown/sync", func(c *fiber.Ctx) error {
+		logger.System("SERVER_SHUTDOWN_SYNC: Received synchronous shutdown request...")
+		
+		if s.pool != nil {
+			logger.System("SERVER_SHUTDOWN_SYNC: Starting synchronous pool cleanup...")
+			start := time.Now()
+			
+			// Get initial context count for monitoring
+			initialCount := s.pool.GetContextCount()
+			logger.System("SERVER_SHUTDOWN_SYNC: Initial context count: %d", initialCount)
+			
+			// Perform synchronous close with timeout
+			if err := s.pool.CloseSync(); err != nil {
+				logger.Error("SERVER_SHUTDOWN_SYNC: Pool close failed: %v", err)
+				return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Pool shutdown failed",
+					"details": err.Error(),
+				})
+			}
+			
+			duration := time.Since(start)
+			logger.System("SERVER_SHUTDOWN_SYNC: Pool cleanup completed in %v", duration)
+		}
+		
+		// Monitor for orphaned Chromium processes
+		logger.System("SERVER_SHUTDOWN_SYNC: Monitoring for orphaned Chromium processes...")
+		go func() {
+			// Wait a moment for the pool to finish closing
+			time.Sleep(1 * time.Second)
+			
+			// Monitor for orphaned processes
+			browser.MonitorChromiumCleanup()
+		}()
+		
+		logger.System("SERVER_SHUTDOWN_SYNC: All cleanup complete, sending response")
+		return c.JSON(fiber.Map{
+			"success": true,
+			"message": "All Chromium instances terminated successfully",
+		})
+	})
+	
+	// 3. Route with API prefix for backward compatibility
+	s.app.Post("/api/v1/internal/shutdown", func(c *fiber.Ctx) error {
+		logger.System("SERVER_SHUTDOWN (with prefix): Received graceful shutdown signal...")
+		if s.pool != nil {
+			s.pool.Close()
+		}
+		return c.JSON(fiber.Map{
+			"success": true,
+			"message": "Shutdown initiated"
+		})
+	})
+	
+	// 4. API prefix version of sync shutdown
+	s.app.Post("/api/v1/internal/shutdown/sync", func(c *fiber.Ctx) error {
+		logger.System("SERVER_SHUTDOWN_SYNC (with prefix): Received synchronous shutdown request...")
+		
+		if s.pool != nil {
+			start := time.Now()
+			initialCount := s.pool.GetContextCount()
+			logger.System("SERVER_SHUTDOWN_SYNC: Initial context count: %d", initialCount)
+			
+			if err := s.pool.CloseSync(); err != nil {
+				logger.Error("SERVER_SHUTDOWN_SYNC: Pool close failed: %v", err)
+				return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Pool shutdown failed",
+					"details": err.Error(),
+				})
+			}
+			
+			duration := time.Since(start)
+			logger.System("SERVER_SHUTDOWN_SYNC: Pool cleanup completed in %v", duration)
+		}
+		
+		// Run orphaned process cleanup
+		go browser.MonitorChromiumCleanup()
+		
+		return c.JSON(fiber.Map{
+			"success": true,
+			"message": "All Chromium instances terminated successfully",
+		})
+	})
+	
+	// 5. Also register under the api group for complete backward compatibility 
+	api.Post("/internal/shutdown", func(c *fiber.Ctx) error {
+		logger.System("SERVER_SHUTDOWN (via api group): Received graceful shutdown signal...")
+		if s.pool != nil {
+			s.pool.Close()
+		}
+		return c.JSON(fiber.Map{
+			"success": true,
+			"message": "Shutdown initiated"
+		})
+	})
+	
+	// 6. Sync version under api group
+	api.Post("/internal/shutdown/sync", func(c *fiber.Ctx) error {
+		logger.System("SERVER_SHUTDOWN_SYNC (via api group): Received shutdown request...")
+		if s.pool != nil {
+			if err := s.pool.CloseSync(); err != nil {
+				logger.Error("SERVER_SHUTDOWN_SYNC: Pool close failed: %v", err)
+			}
+		}
+		return c.JSON(fiber.Map{
+			"success": true,
+			"message": "All Chromium instances terminated"
+		})
+	})
+
 	// Sessions
 	sessions := api.Group("/sessions")
 	sessions.Get("", s.handlers.handleListSessions)
@@ -198,6 +327,12 @@ func (s *Server) setupRoutes() {
 
 	// Audit
 	api.Get("/audit", s.handlers.handleAudit)
+
+	// Vault (Intelligence Vault) - Sprint 28
+	vault := api.Group("/vault")
+	vault.Post("/secrets", s.handlers.handleAddSecret)
+	vault.Get("/secrets", s.handlers.handleListSecrets)
+	vault.Delete("/secrets/:name", s.handlers.handleDeleteSecret)
 }
 
 // Health check handler

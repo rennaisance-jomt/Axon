@@ -163,24 +163,45 @@ pip install axon-sdk
 ### Example: Post to X.com
 
 ```python
-import axon
+import asyncio
+from axon import Axon
 
-# Connect to Axon server
-client = axon.Client("http://localhost:8020")
+async def main():
+    # Connect to Axon server (starts it if start_engine=True)
+    async with Axon("http://localhost:8020/api/v1", start_engine=True) as client:
+        # Create session
+        session_id = "x_main"
+        await client.create_session(session_id)
 
-# Create session with X.com profile
-session = client.session_create("x_main", profile="x_session.json")
+        # Navigate to X
+        await client.navigate(session_id, "https://x.com/home")
 
-# Navigate to X
-client.navigate("https://x.com/home", session="x_main")
+        # Get snapshot
+        snapshot = await client.snapshot(session_id)
+        
+        # Find the compose box and post
+        # (Assuming e1 and a1 are refs found in snapshot)
+        await client.act(session_id, "fill", "e1", value="Hello from Axon!")
+        await client.act(session_id, "click", "a1")
 
-# Get snapshot
-snapshot = client.snapshot(session="x_main")
-print(snapshot)
+if __name__ == "__main__":
+    asyncio.run(main())
+```
 
-# Find the compose box and post
-client.act(ref="e1", action="fill", value="Hello from Axon!", session="x_main")
-client.act(ref="a1", action="click", session="x_main")
+### Managing Secrets (The Vault)
+
+```python
+# Seed the vault with a domain-bound credential
+await client.add_secret(
+    name="my-github",
+    url="github.com",
+    username="axon-bot",
+    password="super-secret-password"
+)
+
+# Use the secret without the agent ever seeing the plaintext
+# Axon will automatically inject it into the correct field
+await client.vault_fill(session_id, ref="pass-input", secret_name="my-github")
 ```
 
 ---
@@ -258,6 +279,7 @@ The URL was blocked by security. See SECURITY.md for allowlist configuration.
 |------|------|
 | Configure security | [SECURITY.md](./SECURITY.md) |
 | Understand API | [API_SPEC.md](./API_SPEC.md) |
+| Vault Security Evaluation | [tests/e2e/security/vault/README.md](../tests/e2e/security/vault/README.md) |
 
 ---
 

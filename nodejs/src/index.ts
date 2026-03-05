@@ -263,6 +263,54 @@ export class Axon {
   }
 
   /**
+   * Fill an input field using a secret from the Intelligence Vault
+   * 
+   * @param sessionId - The session ID
+   * @param ref - Element reference ID
+   * @param secretName - Name of the secret in the vault
+   * @param field - Field name to inject (username, password, value)
+   */
+  async vaultFill(
+    sessionId: string,
+    ref: string,
+    secretName: string,
+    field: string = 'password'
+  ): Promise<ActionResponse> {
+    const vaultRef = `@vault:${secretName}:${field}`;
+    return this.fill(sessionId, ref, vaultRef);
+  }
+
+  // ================== Vault Management ==================
+
+  /**
+   * Add a secret to the Intelligence Vault
+   * 
+   * @param name - Friendly name for the secret
+   * @param value - Secret value (for generic secrets)
+   * @param url - Domain/URL the secret is bound to
+   * @param options - Additional fields (username, password, labels)
+   */
+  async addSecret(
+    name: string,
+    value: string,
+    url: string,
+    options: {
+      username?: string;
+      password?: string;
+      labels?: string[];
+    } = {}
+  ): Promise<boolean> {
+    const data = {
+      name,
+      value,
+      url,
+      ...options,
+    };
+    const result = await this.request<{ success: boolean }>('POST', '/vault/secrets', data);
+    return result.success;
+  }
+
+  /**
    * Hover over an element
    * 
    * @param sessionId - The session ID

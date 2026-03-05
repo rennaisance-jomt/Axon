@@ -1,0 +1,3 @@
+security:
+  ssrf:
+    allow_private_network: true

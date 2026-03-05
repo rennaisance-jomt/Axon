@@ -91,6 +91,29 @@ Or using the `--api-url` flag with any command.
 ./axon-cli.exe act mysession select --ref e4 --value "option1"
 ```
 
+### Vault Management (Secrets)
+
+Axon includes a Secure Intelligence Vault (BadgerVault) for managing sensitive credentials.
+
+```bash
+# List all secrets in the vault
+./axon-cli.exe vault list
+
+# Add a domain-bound credential
+./axon-cli.exe vault add my-github https://github.com --user axon-bot --pass super-secret
+
+# Delete a secret
+./axon-cli.exe vault delete my-github
+```
+
+To use a secret in an action without exposing it to the agent, use the `@vault` reference in the `act` command:
+
+```bash
+# Inject the password for 'my-github' into element 'e2'
+# The CLI/Agent only sees "Successfully filled" but never the password
+./axon-cli.exe act mysession fill --ref e2 --value "@vault:my-github:password"
+```
+
 ## Commands Reference
 
 | Command | Description |
@@ -102,6 +125,9 @@ Or using the `--api-url` flag with any command.
 | `navigate <session> <url>` | Navigate to a URL |
 | `snapshot <session>` | Get page snapshot |
 | `act <session> <action>` | Perform an action |
+| `vault list` | List all secrets |
+| `vault add <name> <url>` | Add a secret |
+| `vault delete <name>` | Delete a secret |
 
 ## Options
 

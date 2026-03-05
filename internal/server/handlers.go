@@ -37,15 +37,19 @@ type Handlers struct {
 	auditLogger     *security.AuditLogger
 	cfg             *config.Config
 	stats           *StatsCollector
+	vault           *security.Vault
 }
 
 // NewHandlers creates new handlers
 func NewHandlers(pool *browser.Pool, db *storage.DB, cfg *config.Config) *Handlers {
 	// Sprint 18: Initialize checkpoint manager for session snapshots
 	checkpointMgr := browser.NewCheckpointManager(50, 24*time.Hour)
-	
+
+	// Sprint 28: Initialize vault
+	vault := security.NewVault(db, []byte(cfg.Security.VaultKey))
+
 	// Sprint 19: Initialize session manager with recovery support
-	sessions := browser.NewSessionManagerWithRecovery(pool, cfg.Browser.MaxSessionLife, checkpointMgr)
+	sessions := browser.NewSessionManagerWithRecovery(pool, cfg.Browser.MaxSessionLife, checkpointMgr, vault)
 	
 	// Sprint 24: Initialize SSRF guard
 	ssrfGuard := security.NewSSRFGuard(cfg.Security.SSRF.AllowPrivateNetwork, cfg.Security.SSRF.DomainAllowlist, cfg.Security.SSRF.DomainDenylist, cfg.Security.SSRF.SchemeAllowlist)
@@ -59,6 +63,7 @@ func NewHandlers(pool *browser.Pool, db *storage.DB, cfg *config.Config) *Handle
 		promptGuard: security.NewPromptInjectionGuard(),
 		auditLogger: security.NewAuditLogger(),
 		cfg:         cfg,
+		vault:       vault,
 	}
 	
 	// Set up SSRF event handler for audit logging and admin notifications
@@ -253,7 +258,7 @@ func (h *Handlers) handleSnapshot(c *fiber.Ctx) error {
 	}
 
 	// Get snapshot
-	extractor := browser.NewSnapshotExtractor()
+	extractor := browser.NewSnapshotExtractor().WithVault(h.vault)
 	snapshot, err := extractor.Extract(session.Page, req.Depth, req.Focus)
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(types.APIError{
@@ -350,7 +355,9 @@ func (h *Handlers) handleAct(c *fiber.Ctx) error {
 		}
 	case types.ActionFill:
 		if err := session.Fill(selector, req.Value); err != nil {
-			return c.JSON(types.ActionResult{
+			// Use 422 Unprocessable Entity so the SDK can detect business-logic
+			// failures (e.g. phishing guard block) vs infrastructure errors.
+			return c.Status(http.StatusUnprocessableEntity).JSON(types.ActionResult{
 				Success:     false,
 				ErrorType:   types.ErrElementNotFound,
 				Message:     err.Error(),
@@ -1079,4 +1086,61 @@ Note: To search, you usually need to 'fill' the query and then 'press' the 'Ente
 	}
 	
 	return c.JSON(decision)
+}
+
+// handleAddSecret handles adding a secret to the vault
+func (h *Handlers) handleAddSecret(c *fiber.Ctx) error {
+	var req struct {
+		Name     string   `json:"name"`
+		Value    string   `json:"value"`
+		Username string   `json:"username"`
+		Password string   `json:"password"`
+		URL      string   `json:"url"`
+		Labels   []string `json:"labels"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	if req.Name == "" || req.URL == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "name and url are required"})
+	}
+
+	secret := &security.Secret{
+		Name:      req.Name,
+		Value:     req.Value,
+		Username:  req.Username,
+		Password:  req.Password,
+		Domain:    req.URL, // In production, extract domain from URL
+		CreatedAt: time.Now(),
+		Labels:    req.Labels,
+	}
+
+	if err := h.vault.AddSecret(secret); err != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	logger.Success("Secret added to vault: %s (domain: %s)", req.Name, secret.Domain)
+	return c.JSON(fiber.Map{"success": true})
+}
+
+// handleListSecrets handles listing vault secrets (metadata only)
+func (h *Handlers) handleListSecrets(c *fiber.Ctx) error {
+	// This would require a ListSecrets method in Vault/Storage
+	// For now, return a placeholder or implement it if needed
+	return c.JSON(fiber.Map{"message": "ListSecrets not implemented yet"})
+}
+
+// handleDeleteSecret handles deleting a secret from the vault
+func (h *Handlers) handleDeleteSecret(c *fiber.Ctx) error {
+	name := c.Params("name")
+	domain := c.Query("domain")
+
+	if name == "" || domain == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "name and domain are required"})
+	}
+
+	// This would require a DeleteSecret method in Vault/Storage
+	return c.JSON(fiber.Map{"message": "DeleteSecret not implemented yet"})
 }

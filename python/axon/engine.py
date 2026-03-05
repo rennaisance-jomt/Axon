@@ -66,12 +66,22 @@ class AxonEngine:
         logger.info(f"Starting Axon engine: {' '.join(cmd)}")
         
         # Start the process
+        # NOTE: Showing stdout/stderr for debugging browser cleanup issues
         self.process = subprocess.Popen(
             cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
         )
+        
+        # Read output in background thread for logging
+        def read_output(pipe, prefix):
+            for line in pipe:
+                print(f"{prefix}: {line.decode().strip()}")
+        
+        import threading
+        threading.Thread(target=read_output, args=(self.process.stdout, "STDOUT"), daemon=True).start()
+        threading.Thread(target=read_output, args=(self.process.stderr, "STDERR"), daemon=True).start()
         
         # Wait for engine to be ready
         start_time = time.time()

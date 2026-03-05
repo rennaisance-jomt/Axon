@@ -9,6 +9,7 @@ import (
 
 	"github.com/rennaisance-jomt/axon/internal/browser"
 	"github.com/rennaisance-jomt/axon/internal/config"
+	"github.com/rennaisance-jomt/axon/internal/security"
 	"github.com/rennaisance-jomt/axon/internal/storage"
 	"github.com/rennaisance-jomt/axon/pkg/logger"
 	"github.com/rennaisance-jomt/axon/pkg/types"
@@ -59,17 +60,20 @@ type MCPServer struct {
 	reader      *bufio.Reader
 	writer      io.Writer
 	currentSession string
+	vault       *security.Vault
 }
 
 // NewMCPServer creates a new MCP server
 func NewMCPServer(pool *browser.Pool, db *storage.DB, cfg *config.Config) *MCPServer {
+	vault := security.NewVault(db, []byte(cfg.Security.VaultKey))
 	return &MCPServer{
-		sessions: browser.NewSessionManager(pool, cfg.Browser.MaxSessionLife),
+		sessions: browser.NewSessionManager(pool, cfg.Browser.MaxSessionLife, vault),
 		pool:     pool,
 		db:       db,
 		cfg:      cfg,
 		reader:   bufio.NewReader(os.Stdin),
 		writer:   os.Stdout,
+		vault:    vault,
 	}
 }
 
@@ -261,6 +265,33 @@ func (s *MCPServer) handleToolsList(msg *MCPMessage) error {
 				Required: []string{},
 			},
 		},
+		{
+			Name:        "axon_vault_fill",
+			Description: "Fill an input field using a protected secret from the Intelligence Vault. The agent never sees the plaintext.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"ref": {
+						Type:        "string",
+						Description: "Element reference from snapshot",
+					},
+					"secret_name": {
+						Type:        "string",
+						Description: "Name of the secret in the vault",
+					},
+					"field": {
+						Type:        "string",
+						Description: "Field to inject: username, password, or value",
+						Enum:        []string{"username", "password", "value"},
+					},
+					"session_id": {
+						Type:        "string",
+						Description: "Session ID",
+					},
+				},
+				Required: []string{"ref", "secret_name"},
+			},
+		},
 	}
 	
 	return s.sendResult(msg.ID, map[string]interface{}{
@@ -295,6 +326,8 @@ func (s *MCPServer) handleToolsCall(msg *MCPMessage) error {
 		result, err = s.toolReplay(params.Arguments)
 	case "axon_get_status":
 		result, err = s.toolGetStatus(params.Arguments)
+	case "axon_vault_fill":
+		result, err = s.toolVaultFill(params.Arguments)
 	default:
 		return s.sendError(msg.ID, -32602, "Unknown tool", params.Name)
 	}
@@ -366,7 +399,7 @@ func (s *MCPServer) toolSnapshot(args map[string]interface{}) (interface{}, erro
 		return nil, fmt.Errorf("session not found: %w", err)
 	}
 	
-	extractor := browser.NewSnapshotExtractor()
+	extractor := browser.NewSnapshotExtractor().WithVault(s.vault)
 	snapshot, err := extractor.Extract(session.Page, depth, "")
 	if err != nil {
 		return nil, fmt.Errorf("snapshot failed: %w", err)
@@ -544,6 +577,37 @@ func (s *MCPServer) toolGetStatus(args map[string]interface{}) (interface{}, err
 		"auth_state": session.AuthState,
 		"page_state": session.PageState,
 	}, nil
+}
+
+func (s *MCPServer) toolVaultFill(args map[string]interface{}) (interface{}, error) {
+	ref, ok := args["ref"].(string)
+	if !ok || ref == "" {
+		return nil, fmt.Errorf("ref is required")
+	}
+
+	secretName, ok := args["secret_name"].(string)
+	if !ok || secretName == "" {
+		return nil, fmt.Errorf("secret_name is required")
+	}
+
+	field := "password"
+	if f, ok := args["field"].(string); ok && f != "" {
+		field = f
+	}
+
+	sessionID := "default"
+	if sid, ok := args["session_id"].(string); ok && sid != "" {
+		sessionID = sid
+	}
+
+	vaultRef := fmt.Sprintf("@vault:%s:%s", secretName, field)
+
+	return s.toolAct(map[string]interface{}{
+		"ref":        ref,
+		"action":     types.ActionFill,
+		"value":      vaultRef,
+		"session_id": sessionID,
+	})
 }
 
 func (s *MCPServer) getElementType(session *browser.Session, ref string) (string, error) {

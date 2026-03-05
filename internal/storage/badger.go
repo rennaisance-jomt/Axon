@@ -72,6 +72,23 @@ func (d *DB) ListSessions() ([]string, error) {
 	return sessions, err
 }
 
+func (d *DB) ListWithPrefix(prefix string) ([]string, error) {
+	var keys []string
+	prefixBytes := []byte(prefix)
+	err := d.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer it.Close()
+		for it.Seek(prefixBytes); it.ValidForPrefix(prefixBytes); it.Next() {
+			key := it.Item().Key()
+			// Return key without "session:" prefix for consistency with SetSession/GetSession usage
+			// SetSession adds "session:", so if we list "session:foo", we want to return "foo"
+			keys = append(keys, string(key[len("session:"):]))
+		}
+		return nil
+	})
+	return keys, err
+}
+
 // Audit operations
 func (d *DB) AppendAuditLog(data []byte) error {
 	return d.db.Update(func(txn *badger.Txn) error {

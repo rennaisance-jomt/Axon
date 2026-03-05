@@ -3,12 +3,12 @@ package browser
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
+	"github.com/rennaisance-jomt/axon/internal/security"
 )
 
 // Element represents a page element
@@ -30,6 +30,7 @@ type Element struct {
 	Height          float64             `json:"height,omitempty"`
 	HRef            string              `json:"href,omitempty"`
 	Value           string              `json:"value,omitempty"`
+	VaultSuggestion string              `json:"vault_suggestion,omitempty"` // Sprint 28: Suggested vault reference
 	BackendNodeID   proto.DOMBackendNodeID `json:"-"` // Internal: BackendDOMNodeID for element actions
 }
 
@@ -58,6 +59,7 @@ type Warning struct {
 // SnapshotExtractor extracts page snapshots
 type SnapshotExtractor struct {
 	refCounter int
+	vault      *security.Vault
 }
 
 // NewSnapshotExtractor creates a new extractor
@@ -65,6 +67,12 @@ func NewSnapshotExtractor() *SnapshotExtractor {
 	return &SnapshotExtractor{
 		refCounter: 0,
 	}
+}
+
+// WithVault attaches a vault for intelligent suggestions
+func (se *SnapshotExtractor) WithVault(v *security.Vault) *SnapshotExtractor {
+	se.vault = v
+	return se
 }
 
 // Extract extracts a snapshot from the page
@@ -109,6 +117,11 @@ func (se *SnapshotExtractor) Extract(page *rod.Page, depth string, selector stri
 
 	// Collapse related elements into High-Compression Intent Graphs
 	elements = se.CollapseIntentGraph(elements)
+
+	// Sprint 28: Intelligent Auto-Login Detection
+	if se.vault != nil {
+		se.suggestVaultSecrets(url, elements)
+	}
 
 	// Build snapshot
 	snapshot := &Snapshot{
@@ -226,13 +239,8 @@ func (se *SnapshotExtractor) extractElements(page *rod.Page, selector string) ([
 				Height:      height,
 				HRef:        href,
 				Value:       value,
-				BackendNodeID: node.BackendDOMNodeID, // Store for element actions
+				BackendNodeID: node.BackendDOMNodeID,
 			})
-			
-			// Debug: Log if BackendNodeID is available
-			if node.BackendDOMNodeID > 0 {
-				log.Printf("[snapshot] Element %s has BackendNodeID: %d", ref, node.BackendDOMNodeID)
-			}
 		}
 	}
 	
@@ -434,6 +442,68 @@ func (se *SnapshotExtractor) ClassifyIntent(label, role string) string {
 	}
 
 	return "unknown"
+}
+
+// suggestVaultSecrets identifies elements that can be filled from the vault
+func (se *SnapshotExtractor) suggestVaultSecrets(url string, elements []Element) {
+	secrets, err := se.vault.ListSecretsByDomain(url)
+	if err != nil || len(secrets) == 0 {
+		return
+	}
+
+	for i := range elements {
+		el := &elements[i]
+
+		// input_group is a composite of (input + button) used for token-efficient
+		// display. It is NOT directly fillable — the underlying input is. Never
+		// attach vault suggestions to groups; the individual fields already got them.
+		if el.Type == "input_group" {
+			continue
+		}
+
+		// Only consider actual fillable input types.
+		if el.Type != "textbox" && el.Type != "password" && el.Type != "email" {
+			continue
+		}
+
+		// Build a combined label string for keyword matching.
+		// Include placeholder because it often carries the semantic signal
+		// (e.g. "example@organization.com" signals an email/username field).
+		combined := strings.ToLower(el.Label + " " + el.Placeholder)
+
+		for _, secret := range secrets {
+			// Username / email field detection:
+			//   – explicit keywords: "user", "email", "login", "account"
+			//   – AX type is "email"
+			//   – placeholder/label looks like an email address (contains "@")
+			isUsernameField := el.Type == "email" ||
+				strings.Contains(combined, "user") ||
+				strings.Contains(combined, "email") ||
+				strings.Contains(combined, "login") ||
+				strings.Contains(combined, "account") ||
+				strings.Contains(combined, "@") // email address pattern
+
+			if isUsernameField && secret.Username != "" {
+				el.VaultSuggestion = fmt.Sprintf("@vault:%s:username", secret.Name)
+				break
+			}
+
+			// Password field detection: keyword or AX type
+			isPasswordField := el.Type == "password" ||
+				strings.Contains(combined, "pass")
+
+			if isPasswordField && secret.Password != "" {
+				el.VaultSuggestion = fmt.Sprintf("@vault:%s:password", secret.Name)
+				break
+			}
+
+			// Generic textbox fallback — only if the secret has a generic value
+			if el.Type == "textbox" && secret.Value != "" && el.VaultSuggestion == "" {
+				el.VaultSuggestion = fmt.Sprintf("@vault:%s:value", secret.Name)
+				break
+			}
+		}
+	}
 }
 
 // GetElementByRef finds an element by its reference
