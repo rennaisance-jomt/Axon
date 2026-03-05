@@ -57,7 +57,8 @@ export class AxonToolkit {
                         value: { type: 'string', description: 'Value for input or selection' }
                     },
                     required: ['intent', 'action']
-                },
+                }
+            },
             {
                 name: 'wait_for_stability',
                 description: 'Wait until the page is fully stable and animations are finished.',
