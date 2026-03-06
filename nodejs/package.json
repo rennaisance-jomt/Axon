@@ -1,6 +1,6 @@
 {
   "name": "@rennaisance-jomt/axon-browser",
-  "version": "1.0.2",
+  "version": "1.0.5",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
