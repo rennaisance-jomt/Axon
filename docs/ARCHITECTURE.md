@@ -1,13 +1,13 @@
 # Axon — Technical Architecture
-## How the AI-Native Browser is Built
+## The Design of an AI-Native Browser
 
-**Version:** 0.1 | **Date:** February 2026
+**Version:** 0.1 | **Date:** March 2026
 
 ---
 
 ## Overview
 
-Axon is structured as **five cooperating layers**, each responsible for a distinct concern. Lower layers can be swapped (e.g., replace Chromium with Firefox at Layer 1) without affecting upper layers.
+Axon is built as a **five-layer system**, where each layer handles a specific part of the browsing process. This modular design allows us to update or replace individual components (like the browser runtime at Layer 1) without requiring changes to the rest of the stack.
 
 ```
 ┌─────────────────────────────────────────────────────┐
