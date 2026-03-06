@@ -68,6 +68,26 @@ Standard "Agent Browsers" wrap heavy QA-testing tools like Playwright in Node.js
 
 ---
 
+## Comparison: How Axon Fits In
+
+There are many great tools in the AI browser space. Here is how Axon compares to other popular approaches:
+
+| Feature | **Axon** | **Stagehand** | **Lightpanda** | **Vercel Agent** | **Skyvern** |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Core Tech** | Go (Native) | TS/Node.js | Zig (Native) | Rust (Native) | Python/Vision |
+| **Engine** | Optimized Chromium| Standard Chromium| Custom (Unique) | Headless Chrome | Computer Vision |
+| **Logic** | Semantic Graphs | Hybrid/Playwright | Pure Runtime | Snapshot JSON | Visual Analysis |
+| **Security** | Built-in Vault | App Layer | Sandbox | CLI-based | System-level |
+| **Main Advantage** | Native Efficiency | Ease of Use | Ultra-Low RAM | Developer Speed | Adaptability |
+
+### Key Differentiators
+- **Axon vs. Vercel Agent Browser**: Vercel’s tool is a fast Rust-based CLI that focuses on snapshotting pages into JSON for LLMs. Axon goes deeper by providing a persistent, stateful engine with real-time semantic interaction and a secure credential vault.
+- **Axon vs. Skyvern**: Skyvern uses computer vision to "see" and interact like a human. It's great for handling complex UI changes. Axon focuses on the underlying semantic tree, making it much faster and more token-efficient for high-volume automated tasks.
+- **Axon vs. Stagehand**: Stagehand is an excellent framework wrapping Playwright. Axon is a standalone engine that replaces heavy automation libraries with a single, high-performance binary.
+- **Axon vs. Lightpanda**: Lightpanda is a from-scratch Zig engine. Axon maintains total web compatibility by using a customized Chromium core while keeping resource usage extremely low.
+
+---
+
 ## Architecture
 
 Axon is built in pure **Go** with a unique modular architecture designed for agents:
