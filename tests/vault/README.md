@@ -7,8 +7,8 @@ To cryptographically and physically prove our security boundaries, we constructe
 ## Directory Structure
 
 ```text
-tests/e2e/security/vault/
-├── vault_security_test.py    # The automated Python E2E Evaluation Script (Self-contained)
+tests/vault/
+├── vault_security_test.py    # Automated Python Evaluation Script
 └── README.md                 # This documentation
 ```
 
@@ -43,7 +43,7 @@ Alongside the Integration tests, the mathematical logic that powers these E2E de
 2. Execute the self-contained E2E script:
    ```powershell
    $env:PYTHONPATH="python"
-   python tests/e2e/security/vault/vault_security_test.py
+   python tests/vault/vault_security_test.py
    ```
 
 *The automated tests require zero spoofing or artificial triggers.*
