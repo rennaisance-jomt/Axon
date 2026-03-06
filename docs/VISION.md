@@ -1,54 +1,43 @@
-# The Vision: The Death of the Visual Web
+# The Vision: A Browser Built for AI
 
-## The Great Perception Gap
+## The Problem: Browsers for Humans vs. Browsers for Agents
 
-The internet is fundamentally broken for AI.
+The internet was built for human eyes. We use CSS for styling, JavaScript for animations, and complex layouts for visual appeal. This works for humans, but it creates a lot of "noise" for AI agents.
 
-For 30 years, we have built web pages for **human eyes**. We use CSS to make buttons glow, JavaScript to animate menus, and complex Flexbox layouts to please human retinas. This is the **Visual Web**.
+Currently, most agents use tools like Playwright to scrape thousands of lines of HTML just to find a single button. This is slow, expensive, and fragile.
 
-Today, the most frequent, scaled, and important "users" navigating the internet are increasingly silicon-based: **AI Agents**.
-
-And yet, the industry is forcing these hyper-intelligent reasoning engines to look at the world through a straw. We scrape 50,000 lines of `<div class="mt-4 flex object-cover">` garbage just to ask an LLM to find the "Login" button. We force mathematical reasoning engines to parse pixel coordinates. 
-
-**This is a massive waste of compute, money, and time. This is the Perception Gap.**
+**Axon aims to fix this by providing a browser engine built specifically for machine interaction.**
 
 ---
 
-## The Birth of the Semantic Intent Space
+## Semantic Intent: Moving Beyond Raw HTML
 
-Axon was built to eliminate the Visual Web for machines. **Agents do not have eyes; they do not need CSS.** They need **semantics, intent, and actionable state**.
+Agents don't need pixels or CSS. They need to understand what they can do on a page and how to do it.
 
-When an agent uses Axon to navigate the web, the page is intercepted at the network and engine layers. We strip away the visual noise, the fonts, the ad-trackers, and the miles of arbitrary styling. 
+Axon intercepts the page at the engine level and strips away the visual noise—fonts, images, ad-trackers, and complex styling. Instead of raw HTML, Axon provides a **Semantic Intent Space**: a highly condensed representation of what the page actually means.
 
-Instead of an HTML string, Axon collapses the page into a **Semantic Intent Space**: an ultra-dense, mathematically pure representation of *what the page means* and *what the agent can do*.
+### Traditional Automation
+- **Process**: Load full page → Scrape HTML → LLM parses for selectors.
+- **Cost**: High token usage per page.
+- **Reliability**: Often breaks when UI styles change.
 
-### The Old Paradigm (Visual Web)
-*  Renders for Pixels → AI parses for Selectors → Reasoning is lost in the noise.
-*  Cost: $2.00 per page read.
-*  Reliability: Breaks when a Tailwind class name changes.
-
-### The New Paradigm (Axon Semantic Space)
-*  Distills for Semantics → AI perceives Intent → Reasoning is native.
-*  Cost: $0.02 per page read.
-*  Reliability: Survives total UI overhauls because the underlying *intent* remains the same.
+### Axon Approach
+- **Process**: Extract semantic tree → LLM perceives intent directly.
+- **Cost**: Minimal token usage (often a 98% reduction).
+- **Reliability**: More stable because it focuses on the underlying functionality rather than the styling.
 
 ---
 
-## The Future of Silicon Users
+## Future-Proofing the Web for Agents
 
-We believe that within 36 months, **autonomous internet traffic will surpass human internet traffic**. These "Silicon Users" need an infrastructure built for them.
+As more tasks are automated, the need for an infrastructure built for agents becomes critical. Axon is designed to be the standard sensory layer for any agent framework, whether it's built on LangChain, AutoGen, or custom code.
 
-Axon is that infrastructure. It is the first sensory layer built exclusively for AI. 
-
-Our north star is simple: **Axon will become the standard engine for all AI agents.** Whether an agent is built on LangChain, AutoGen, or a custom Python loop, Axon will provide the unblurred eyes and steady hands it needs to navigate the digital world.
-
-Welcome to the machine-to-machine internet.
+Our goal is simple: make it as easy for an AI to navigate the web as it is for a human, without the overhead of the visual web.
 
 ---
 
 <div align="center">
 
 *Axon Project | 2026*  
-*An AI-native browser built with  for AI agents.*
 
 </div>
