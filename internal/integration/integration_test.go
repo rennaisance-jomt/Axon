@@ -31,7 +31,7 @@ func TestNavigateSnapshotActWorkflow(t *testing.T) {
 	defer pool.Close()
 
 	// Create session manager
-	sm := browser.NewSessionManager(pool, 30*time.Minute)
+	sm := browser.NewSessionManager(pool, 30*time.Minute, nil)
 
 	// 1. Create session
 	session, err := sm.Create("test-workflow", "")
@@ -78,7 +78,7 @@ func TestSessionPersistence(t *testing.T) {
 	}
 	defer pool.Close()
 
-	sm := browser.NewSessionManager(pool, 30*time.Minute)
+	sm := browser.NewSessionManager(pool, 30*time.Minute, nil)
 
 	// 1. Create session
 	session, err := sm.Create("persist-test", "")
@@ -133,7 +133,7 @@ func TestProfileLoading(t *testing.T) {
 	}
 	defer pool.Close()
 
-	sm := browser.NewSessionManager(pool, 30*time.Minute)
+	sm := browser.NewSessionManager(pool, 30*time.Minute, nil)
 
 	// 1. Create session
 	session, err := sm.Create("profile-test", "")

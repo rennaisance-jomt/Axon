@@ -174,7 +174,7 @@ func (s *Server) setupRoutes() {
 		logger.System("SERVER_SHUTDOWN: Shutdown complete, sending response")
 		return c.JSON(fiber.Map{
 			"success": true,
-			"message": "Shutdown initiated"
+			"message": "Shutdown initiated",
 		})
 	})
 	
@@ -228,7 +228,7 @@ func (s *Server) setupRoutes() {
 		}
 		return c.JSON(fiber.Map{
 			"success": true,
-			"message": "Shutdown initiated"
+			"message": "Shutdown initiated",
 		})
 	})
 	
@@ -270,7 +270,7 @@ func (s *Server) setupRoutes() {
 		}
 		return c.JSON(fiber.Map{
 			"success": true,
-			"message": "Shutdown initiated"
+			"message": "Shutdown initiated",
 		})
 	})
 	
@@ -284,7 +284,7 @@ func (s *Server) setupRoutes() {
 		}
 		return c.JSON(fiber.Map{
 			"success": true,
-			"message": "All Chromium instances terminated"
+			"message": "All Chromium instances terminated",
 		})
 	})
 

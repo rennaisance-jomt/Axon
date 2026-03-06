@@ -112,7 +112,7 @@ func DefaultConfig() *Config {
 		Security: SecurityConfig{
 			SSRF: SSRFConfig{
 				Enabled:             true,
-				AllowPrivateNetwork: true,
+				AllowPrivateNetwork: false,
 				DomainAllowlist:    []string{},
 				DomainDenylist:     []string{},
 				SchemeAllowlist:    []string{"https", "http"},
