@@ -311,6 +311,24 @@ export class Axon {
   }
 
   /**
+   * List all secrets in the Intelligence Vault
+   */
+  async listSecrets(): Promise<any[]> {
+    const result = await this.request<{ secrets: any[] }>('GET', '/vault/secrets');
+    return result.secrets || [];
+  }
+
+  /**
+   * Delete a secret from the Intelligence Vault
+   * 
+   * @param name - The name of the secret to delete
+   */
+  async deleteSecret(name: string): Promise<boolean> {
+    const result = await this.request<{ success: boolean }>('DELETE', `/vault/secrets/${name}`);
+    return result.success;
+  }
+
+  /**
    * Hover over an element
    * 
    * @param sessionId - The session ID
