@@ -402,6 +402,29 @@ class Axon:
         result = await self._request("POST", "/vault/secrets", json=data)
         return result.get("success", False)
 
+    async def list_secrets(self) -> list:
+        """
+        List all secrets in the Intelligence Vault.
+        
+        Returns:
+            List of secret metadata.
+        """
+        result = await self._request("GET", "/vault/secrets")
+        return result.get("secrets", [])
+
+    async def delete_secret(self, name: str) -> bool:
+        """
+        Delete a secret from the Intelligence Vault.
+        
+        Args:
+            name: The name of the secret to delete.
+            
+        Returns:
+            True if successful.
+        """
+        result = await self._request("DELETE", f"/vault/secrets/{name}")
+        return result.get("success", False)
+
     async def hover(self, session_id: str, ref: str) -> ActionResponse:
         """Hover over an element."""
         return await self.act(session_id, "hover", ref)
