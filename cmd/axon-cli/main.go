@@ -82,7 +82,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`Axon CLI - Command-line interface for Axon browser automation
+	fmt.Print(`Axon CLI - Command-line interface for Axon browser automation
 
 Usage:
   axon <command> [arguments]
@@ -107,6 +107,10 @@ Vault subcommands:
     --pass <password>             Optional password
     --value <value>               Optional generic secret value
   vault delete <name>             Delete a secret from the vault
+  vault fill <session> <secret>   Fill a field using a vault secret
+    --ref <id>                    Element reference ID
+    --intent <desc>               Semantic element description
+    --field <name>                Field to inject (default: password)
 
 Options:
   --api-url <url>                 Override API URL (or use AXON_API_URL env var)
@@ -410,7 +414,7 @@ func printResponse(resp *http.Response) {
 func handleVault() {
 	if len(os.Args) < 3 {
 		fmt.Println("Usage: axon vault <subcommand>")
-		fmt.Println("Subcommands: list, add, delete")
+		fmt.Println("Subcommands: list, add, delete, fill")
 		os.Exit(1)
 	}
 
@@ -424,10 +428,12 @@ func handleVault() {
 		handleVaultAdd()
 	case "delete":
 		handleVaultDelete()
+	case "fill":
+		handleVaultFill()
 	default:
 		fmt.Printf("Unknown subcommand: %s\n", subcommand)
 		fmt.Println("Usage: axon vault <subcommand>")
-		fmt.Println("Subcommands: list, add, delete")
+		fmt.Println("Subcommands: list, add, delete, fill")
 		os.Exit(1)
 	}
 }
@@ -523,6 +529,65 @@ func handleVaultDelete() {
 
 	if resp.StatusCode == 204 || resp.StatusCode == 200 {
 		fmt.Printf("Secret '%s' deleted successfully\n", name)
+	} else {
+		printResponse(resp)
+	}
+}
+
+func handleVaultFill() {
+	flag := flag.NewFlagSet("vault fill", flag.ExitOnError)
+	sessionID := flag.String("session", "", "Session ID")
+	secretName := flag.String("secret", "", "Secret name")
+	ref := flag.String("ref", "", "Element reference ID")
+	intent := flag.String("intent", "", "Element intent description")
+	field := flag.String("field", "password", "Field to inject")
+	apiURLFlag := flag.String("api-url", apiURL, "API URL")
+	flag.Parse(os.Args[2:])
+
+	// Positional arguments support: axon vault fill <session> <secret>
+	if *sessionID == "" && len(flag.Args()) > 0 {
+		*sessionID = flag.Args()[0]
+	}
+	if *secretName == "" && len(flag.Args()) > 1 {
+		*secretName = flag.Args()[1]
+	}
+
+	if *sessionID == "" || *secretName == "" {
+		fmt.Println("Usage: axon vault fill <session> <secret> [--ref <ref> | --intent <intent>] [--field <field>]")
+		os.Exit(1)
+	}
+
+	if *ref == "" && *intent == "" {
+		fmt.Println("Error: Either --ref or --intent is required to identify the target element")
+		os.Exit(1)
+	}
+
+	*apiURLFlag = getAPIURL(*apiURLFlag)
+	vaultRef := fmt.Sprintf("@vault:%s:%s", *secretName, *field)
+
+	var urlPath string
+	reqBody := map[string]interface{}{
+		"action": "fill",
+		"value":  vaultRef,
+	}
+
+	if *intent != "" {
+		urlPath = fmt.Sprintf("%s/sessions/%s/find_and_act", *apiURLFlag, *sessionID)
+		reqBody["intent"] = *intent
+	} else {
+		urlPath = fmt.Sprintf("%s/sessions/%s/act", *apiURLFlag, *sessionID)
+		reqBody["ref"] = *ref
+	}
+
+	resp, err := http.Post(urlPath, "application/json", bytes.NewBuffer(mustMarshal(reqBody)))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		fmt.Printf("Successfully injected vault secret '%s:%s' into session '%s'\n", *secretName, *field, *sessionID)
 	} else {
 		printResponse(resp)
 	}
